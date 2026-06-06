@@ -35,10 +35,9 @@ export function Sidebar() {
       <div className="px-4 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
           <img
-            src="/penta-logo.svg"
+            src="/penta-logo.jpeg"
             alt="Penta EPDP"
-            className="w-12 h-12 object-contain shrink-0"
-            style={{ filter: 'brightness(0) invert(1) sepia(1) saturate(2) hue-rotate(5deg)' }}
+            className="w-12 h-12 object-contain shrink-0 rounded-lg"
           />
           <div>
             <h1 className="font-black text-sm leading-tight tracking-widest text-[#d4af37]">PENTA</h1>

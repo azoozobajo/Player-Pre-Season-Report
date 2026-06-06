@@ -44,7 +44,7 @@ export function DashboardPage() {
         {/* Welcome */}
         <div className="bg-gradient-to-l from-[#0a1628] to-[#1e3a6e] rounded-2xl p-6 text-white">
           <div className="flex items-center gap-3 mb-2">
-            <img src="/penta-logo.svg" alt="Penta" className="w-10 h-10 object-contain opacity-80" />
+            <img src="/penta-logo.jpeg" alt="Penta" className="w-10 h-10 object-contain opacity-80" />
             <div>
               <h2 className="text-xl font-black tracking-widest text-[#d4af37]">PENTA EPDP</h2>
               <p className="text-white/50 text-xs tracking-widest">ELITE PLAYER DEVELOPMENT PROGRAM</p>

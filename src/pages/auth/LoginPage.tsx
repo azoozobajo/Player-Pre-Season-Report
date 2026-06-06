@@ -38,7 +38,7 @@ export function LoginPage() {
         <div className="absolute top-1/3 left-4 w-1 h-20 bg-[#d4af37]/15 rounded-full" />
 
         <div className="relative z-10 text-center">
-          <img src="/penta-logo.svg" alt="Penta EPDP" className="w-48 h-36 object-contain mx-auto mb-8 opacity-90" />
+          <img src="/penta-logo.jpeg" alt="Penta EPDP" className="w-48 h-36 object-contain mx-auto mb-8 opacity-90" />
           <h1 className="text-4xl font-black tracking-widest text-white mb-2">PENTA</h1>
           <div className="flex items-center gap-3 justify-center mb-6">
             <div className="h-px w-12 bg-[#d4af37]" />
@@ -54,7 +54,7 @@ export function LoginPage() {
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-8">
-            <img src="/penta-logo.svg" alt="Penta EPDP" className="w-32 h-24 object-contain mx-auto mb-4" />
+            <img src="/penta-logo.jpeg" alt="Penta EPDP" className="w-32 h-24 object-contain mx-auto mb-4" />
             <h1 className="text-2xl font-black tracking-widest text-[#0a1628]">PENTA</h1>
             <p className="text-[#d4af37] text-xs tracking-widest mt-1">ELITE PLAYER DEVELOPMENT PROGRAM</p>
           </div>
