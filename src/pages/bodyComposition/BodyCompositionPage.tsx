@@ -495,12 +495,13 @@ export function BodyCompositionPage() {
                             { name: 'ساق يسرى',  lk: 'left_leg_lean_kg',  lmin: 'left_leg_lean_min',  lmax: 'left_leg_lean_max',  fk: 'left_leg_fat_kg',  fmin: 'left_leg_fat_min',  fmax: 'left_leg_fat_max'  },
                             { name: 'ساق يمنى',  lk: 'right_leg_lean_kg', lmin: 'right_leg_lean_min', lmax: 'right_leg_lean_max', fk: 'right_leg_fat_kg', fmin: 'right_leg_fat_min', fmax: 'right_leg_fat_max' },
                           ].map(seg => {
-                            const lv = (latest as Record<string, number | undefined>)[seg.lk]
-                            const lmin = (latest as Record<string, number | undefined>)[seg.lmin]
-                            const lmax = (latest as Record<string, number | undefined>)[seg.lmax]
-                            const fv = (latest as Record<string, number | undefined>)[seg.fk]
-                            const fmin = (latest as Record<string, number | undefined>)[seg.fmin]
-                            const fmax = (latest as Record<string, number | undefined>)[seg.fmax]
+                            const rec = latest as unknown as Record<string, number | undefined>
+                            const lv = rec[seg.lk]
+                            const lmin = rec[seg.lmin]
+                            const lmax = rec[seg.lmax]
+                            const fv = rec[seg.fk]
+                            const fmin = rec[seg.fmin]
+                            const fmax = rec[seg.fmax]
                             const lst = getStatus(lv, lmin, lmax)
                             const fst = getStatus(fv, fmin, fmax)
                             return (
@@ -612,7 +613,7 @@ export function BodyCompositionPage() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                         <YAxis tick={{ fontSize: 10 }} unit=" كجم" />
-                        <Tooltip formatter={(v: number) => `${v} كجم`} />
+                        <Tooltip formatter={(v) => [`${v} كجم`]} />
                         <Legend />
                         <Bar dataKey="هزيل" fill="#00a86b" radius={[4,4,0,0]} />
                         <Bar dataKey="دهون" fill="#e74c3c" radius={[4,4,0,0]} />
