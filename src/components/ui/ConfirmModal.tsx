@@ -1,5 +1,4 @@
 import { AlertTriangle, HelpCircle } from 'lucide-react'
-import { Button } from './Button'
 
 interface ConfirmModalProps {
   open: boolean

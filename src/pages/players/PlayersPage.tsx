@@ -52,7 +52,7 @@ export function PlayersPage() {
   const [dupWarning, setDupWarning]   = useState<Player | null>(null)  // duplicate name warning
 
   // Photo state — photoData holds final base64 (or existing URL), photoPreview for display
-  const [photoFile, setPhotoFile]       = useState<File | null>(null)
+  const [, setPhotoFile]                = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string>('')
   const [photoData, setPhotoData]       = useState<string>('')   // base64 ready to save
   const [photoLoading, setPhotoLoading] = useState(false)

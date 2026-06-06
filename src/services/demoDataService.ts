@@ -85,7 +85,6 @@ function seededRand(seed: number): number { const x = Math.sin(seed + 1) * 10000
 
 // Generate a realistic coach comment for an indicator result
 function getIndicatorComment(indIdx: number, playerIdx: number, value: number, ind: typeof DEMO_INDICATORS[number]): string {
-  const q = PLAYER_QUALITY[playerIdx]
   const norm = ind.direction === 'lower_better'
     ? 1 - clamp((value - (ind.min_value as number)) / ((ind.max_value as number) - (ind.min_value as number)), 0, 1)
     : clamp((value - (ind.min_value as number)) / ((ind.max_value as number) - (ind.min_value as number)), 0, 1)

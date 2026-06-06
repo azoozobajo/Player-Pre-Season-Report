@@ -18,6 +18,8 @@ import {
   CheckCircle, XCircle, Target, Edit,
 } from 'lucide-react'
 
+type RecommendationForm = Pick<Recommendation, 'title' | 'content' | 'priority' | 'status'>
+
 // ── special note categories ───────────────────────────────────────────────────
 const CAT_TARGETS   = '__targets__'
 const CAT_POSITIVES = '__positives__'
@@ -58,7 +60,7 @@ export function PlayerProfilePage() {
   const [recs, setRecs]                 = useState<Recommendation[]>([])
   const [recModal, setRecModal]         = useState(false)
   const [editingRec, setEditingRec]     = useState<Recommendation | null>(null)
-  const [recForm, setRecForm]           = useState({ title: '', content: '', priority: 'medium', status: 'pending' })
+  const [recForm, setRecForm]           = useState<RecommendationForm>({ title: '', content: '', priority: 'medium', status: 'pending' })
   const [recSaving, setRecSaving]       = useState(false)
   const [confirmDelRec, setConfirmDelRec] = useState<Recommendation | null>(null)
 
@@ -505,12 +507,12 @@ export function PlayerProfilePage() {
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0f2040] resize-none"
           />
           <div className="grid grid-cols-2 gap-3">
-            <Select label="الأولوية" value={recForm.priority} onChange={e => setRecForm(f => ({ ...f, priority: e.target.value }))}>
+            <Select label="الأولوية" value={recForm.priority} onChange={e => setRecForm(f => ({ ...f, priority: e.target.value as Recommendation['priority'] }))}>
               <option value="high">عالية</option>
               <option value="medium">متوسطة</option>
               <option value="low">منخفضة</option>
             </Select>
-            <Select label="الحالة" value={recForm.status} onChange={e => setRecForm(f => ({ ...f, status: e.target.value }))}>
+            <Select label="الحالة" value={recForm.status} onChange={e => setRecForm(f => ({ ...f, status: e.target.value as Recommendation['status'] }))}>
               <option value="pending">قيد الانتظار</option>
               <option value="in_progress">قيد التنفيذ</option>
               <option value="completed">مكتمل</option>
