@@ -32,14 +32,17 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-[#0a1628] text-white flex flex-col h-full fixed right-0 top-0 bottom-0 z-20">
       {/* Logo */}
-      <div className="p-6 border-b border-white/10">
+      <div className="px-4 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-[#d4af37] rounded-xl flex items-center justify-center font-bold text-[#0a1628] text-lg">
-            ⚽
-          </div>
+          <img
+            src="/penta-logo.svg"
+            alt="Penta EPDP"
+            className="w-12 h-12 object-contain shrink-0"
+            style={{ filter: 'brightness(0) invert(1) sepia(1) saturate(2) hue-rotate(5deg)' }}
+          />
           <div>
-            <h1 className="font-bold text-sm leading-tight">نظام تقرير</h1>
-            <p className="text-xs text-white/50">البرنامج الإعدادي</p>
+            <h1 className="font-black text-sm leading-tight tracking-widest text-[#d4af37]">PENTA</h1>
+            <p className="text-[10px] text-white/50 tracking-wider">EPDP</p>
           </div>
         </div>
       </div>
@@ -66,7 +69,7 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-white/10">
-        <p className="text-xs text-white/30 text-center">v1.0.0</p>
+        <p className="text-[10px] text-white/30 text-center tracking-widest">PENTA EPDP v1.0</p>
       </div>
     </aside>
   )

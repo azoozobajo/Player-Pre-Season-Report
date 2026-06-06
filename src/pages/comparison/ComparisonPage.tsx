@@ -74,6 +74,21 @@ export function ComparisonPage() {
     return normalizeIndicatorValue(value, indicator)
   }
 
+  const getPlayerDisplayValue = (playerId: string, indicator: Indicator): string => {
+    const results = allResults[playerId] || []
+    const indicatorResults = results.filter(r => r.indicator_id === indicator.id)
+    if (indicatorResults.length === 0) return '—'
+    const latest = indicatorResults[indicatorResults.length - 1]
+    const value = getIndicatorValue(latest)
+    if (value !== null) {
+      if (indicator.type === 'rating') return `${value}/10`
+      return indicator.unit ? `${value} ${indicator.unit}` : String(value)
+    }
+    if (latest.value_text) return latest.value_text
+    if ((latest as { value_choice?: string }).value_choice) return (latest as { value_choice?: string }).value_choice!
+    return '—'
+  }
+
   const radarData = indicators.slice(0, 10).map(ind => {
     const point: Record<string, string | number> = { subject: ind.name_ar || ind.name }
     selectedPlayerIds.forEach(pid => {
@@ -197,18 +212,12 @@ export function ComparisonPage() {
                             <tr key={ind.id} className="hover:bg-gray-50">
                               <td className="px-4 py-2 font-medium text-gray-700">{ind.name_ar || ind.name}</td>
                               {selectedPlayerIds.map((pid, i) => {
-                                const val = getPlayerValue(pid, ind)
+                                const display = getPlayerDisplayValue(pid, ind)
                                 return (
                                   <td key={pid} className="px-4 py-2">
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                                        <div
-                                          className="h-1.5 rounded-full"
-                                          style={{ width: `${val}%`, backgroundColor: COLORS[i] }}
-                                        />
-                                      </div>
-                                      <span className="text-xs text-gray-500 w-8">{val.toFixed(0)}%</span>
-                                    </div>
+                                    <span className="text-sm font-medium" style={{ color: display === '—' ? '#ccc' : COLORS[i] }}>
+                                      {display}
+                                    </span>
                                   </td>
                                 )
                               })}

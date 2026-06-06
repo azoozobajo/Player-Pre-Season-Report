@@ -43,8 +43,14 @@ export function DashboardPage() {
       <div className="space-y-6">
         {/* Welcome */}
         <div className="bg-gradient-to-l from-[#0a1628] to-[#1e3a6e] rounded-2xl p-6 text-white">
-          <h2 className="text-xl font-bold mb-1">مرحباً بك في نظام تقرير اللاعب ⚽</h2>
-          <p className="text-white/70 text-sm">نظام متكامل لمتابعة تطور اللاعبين في البرنامج الإعدادي</p>
+          <div className="flex items-center gap-3 mb-2">
+            <img src="/penta-logo.svg" alt="Penta" className="w-10 h-10 object-contain opacity-80" />
+            <div>
+              <h2 className="text-xl font-black tracking-widest text-[#d4af37]">PENTA EPDP</h2>
+              <p className="text-white/50 text-xs tracking-widest">ELITE PLAYER DEVELOPMENT PROGRAM</p>
+            </div>
+          </div>
+          <p className="text-white/70 text-sm">نظام متكامل لمتابعة وتطوير اللاعبين</p>
           <div className="flex gap-3 mt-4">
             <Link to="/programs" className="bg-[#d4af37] text-[#0a1628] px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#e8c547] transition-colors inline-flex items-center gap-2">
               <Plus className="w-4 h-4" /> برنامج جديد

@@ -15,10 +15,10 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState({
     organization_name: '',
-    report_title: 'تقرير تطور اللاعب في البرنامج الإعدادي',
+    report_title: 'تقرير تطور اللاعب — Penta EPDP',
     primary_color: '#0a1628',
     accent_color: '#d4af37',
-    report_footer: 'تم إنشاء هذا التقرير بواسطة نظام إدارة البرنامج الإعدادي',
+    report_footer: 'تم إنشاء هذا التقرير بواسطة Penta EPDP',
   })
 
   // Demo data state
@@ -44,7 +44,7 @@ export function SettingsPage() {
     if (s) {
       setForm({
         organization_name: s.organization_name || '',
-        report_title: s.report_title || 'تقرير تطور اللاعب في البرنامج الإعدادي',
+        report_title: s.report_title || 'تقرير تطور اللاعب — Penta EPDP',
         primary_color: s.primary_color || '#0a1628',
         accent_color: s.accent_color || '#d4af37',
         report_footer: s.report_footer || '',

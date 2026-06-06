@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 190">
+  <!-- Left column: 5 dark horizontal bars -->
+  <rect x="22" y="8"  width="96" height="16" rx="2" fill="#12192e"/>
+  <rect x="22" y="32" width="82" height="16" rx="2" fill="#12192e"/>
+  <rect x="22" y="56" width="68" height="16" rx="2" fill="#12192e"/>
+  <rect x="22" y="80" width="82" height="16" rx="2" fill="#12192e"/>
+  <rect x="22" y="104" width="96" height="16" rx="2" fill="#12192e"/>
+
+  <!-- Small icons (left of bars) -->
+  <!-- Brain (top) -->
+  <circle cx="11" cy="16" r="7" fill="none" stroke="#d4af37" stroke-width="1.3"/>
+  <path d="M7 13.5 Q11 10 15 13.5" fill="none" stroke="#d4af37" stroke-width="1.1"/>
+  <path d="M9 17 h4" stroke="#d4af37" stroke-width="1" stroke-linecap="round"/>
+  <!-- Target/eye -->
+  <circle cx="11" cy="40" r="6" fill="none" stroke="#d4af37" stroke-width="1.3"/>
+  <circle cx="11" cy="40" r="2.5" fill="#d4af37"/>
+  <!-- Football -->
+  <circle cx="11" cy="64" r="6.5" fill="none" stroke="#d4af37" stroke-width="1.3"/>
+  <path d="M11 57.5 v13 M4.5 64 h13" stroke="#d4af37" stroke-width="0.8"/>
+  <!-- Runner -->
+  <circle cx="11" cy="84" r="2.5" fill="#d4af37"/>
+  <path d="M9 87 L11 93 L8 98 M11 93 L14 98 M9 87 L7 91 M13 89 L15 87" stroke="#d4af37" stroke-width="1.1" stroke-linecap="round" fill="none"/>
+  <!-- Bar chart -->
+  <rect x="5"  y="109" width="3.5" height="9"  fill="#d4af37" rx="1"/>
+  <rect x="10" y="105" width="3.5" height="13" fill="#d4af37" rx="1"/>
+  <rect x="15" y="111" width="3.5" height="7"  fill="#d4af37" rx="1"/>
+
+  <!-- Gold "P" shape — right side (slanted bars) -->
+  <!-- Stem (vertical) -->
+  <rect x="122" y="8" width="16" height="112" rx="3" fill="#d4af37"/>
+  <!-- P top bar -->
+  <rect x="138" y="8"  width="55" height="16" rx="3" fill="#d4af37"/>
+  <!-- P upper-mid bar (longest) -->
+  <rect x="138" y="32" width="68" height="16" rx="3" fill="#d4af37"/>
+  <!-- P mid bar -->
+  <rect x="138" y="56" width="55" height="16" rx="3" fill="#d4af37"/>
+  <!-- P lower bars (shorter, creating base of P) -->
+  <rect x="138" y="80"  width="38" height="16" rx="3" fill="#d4af37"/>
+  <rect x="138" y="104" width="22" height="16" rx="3" fill="#d4af37"/>
+  <!-- Arrow chevron tip -->
+  <polygon points="196,8 228,64 196,120" fill="#d4af37"/>
+  <!-- Subtle shading on bars -->
+  <rect x="138" y="44" width="68" height="3" fill="#b8922a" opacity="0.3" rx="1"/>
+  <rect x="138" y="68" width="55" height="3" fill="#b8922a" opacity="0.3" rx="1"/>
+
+  <!-- PENTA text -->
+  <text x="0" y="154" font-family="'Arial Black', Arial, sans-serif" font-weight="900" font-size="34" letter-spacing="10" fill="#12192e">PENTA</text>
+
+  <!-- Dividers + EPDP -->
+  <line x1="0"   y1="166" x2="42"  y2="166" stroke="#d4af37" stroke-width="1.5"/>
+  <text x="46" y="171" font-family="Arial, sans-serif" font-weight="700" font-size="14" letter-spacing="4" fill="#d4af37">EPDP</text>
+  <line x1="98" y1="166" x2="140" y2="166" stroke="#d4af37" stroke-width="1.5"/>
+
+  <!-- Subtitle -->
+  <text x="0" y="187" font-family="Arial, sans-serif" font-size="7.5" letter-spacing="1.8" fill="#888">ELITE PLAYER DEVELOPMENT PROGRAM</text>
+</svg>

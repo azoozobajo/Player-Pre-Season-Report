@@ -296,13 +296,6 @@ export function IndicatorsPage() {
               <option value="neutral">محايد</option>
             </Select>
           </div>
-          {form.type === 'numeric' && (
-            <div className="grid grid-cols-3 gap-4">
-              <Input label="الحد الأدنى" type="number" value={form.min_value} onChange={e => setForm(f => ({ ...f, min_value: e.target.value }))} />
-              <Input label="الحد الأقصى" type="number" value={form.max_value} onChange={e => setForm(f => ({ ...f, max_value: e.target.value }))} />
-              <Input label="القيمة المستهدفة" type="number" value={form.target_value} onChange={e => setForm(f => ({ ...f, target_value: e.target.value }))} />
-            </div>
-          )}
           {form.type === 'choice' && (
             <Input label="الخيارات (مفصولة بفاصلة)" value={form.choices} onChange={e => setForm(f => ({ ...f, choices: e.target.value }))} placeholder="ضعيف, متوسط, جيد, ممتاز" />
           )}
