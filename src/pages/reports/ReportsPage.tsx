@@ -19,7 +19,7 @@ import {
   type BodyCompositionRecord,
 } from '../../types'
 import { getIndicatorValue } from '../../utils/progress'
-import { FileText, Printer, BarChart3, ChevronUp, ChevronDown } from 'lucide-react'
+import { FileText, Printer, BarChart3, ChevronUp, ChevronDown, Scale } from 'lucide-react'
 
 // ── special note categories ───────────────────────────────────────────────────
 const CAT_TARGETS   = '__targets__'
@@ -103,6 +103,44 @@ interface ReportData {
   bodyRecs:     BodyCompositionRecord[]
 }
 
+// ── Body composition column groups ───────────────────────────────────────────
+const BC_COL_GROUPS: { label: string; cols: { key: string; label: string; unit?: string }[] }[] = [
+  { label: 'الأساسيات', cols: [
+    { key: 'weight_kg',    label: 'الوزن',  unit: 'كجم' },
+    { key: 'height_cm',   label: 'الطول',  unit: 'سم'  },
+    { key: 'bmi',         label: 'BMI'                 },
+    { key: 'ffmi',        label: 'FFMI'                },
+  ]},
+  { label: 'تركيبة الجسم', cols: [
+    { key: 'body_fat_percentage', label: 'نسبة الدهون',    unit: '%'   },
+    { key: 'muscle_mass_kg',      label: 'الكتلة العضلية', unit: 'كجم' },
+    { key: 'fat_free_mass_kg',    label: 'الكتلة الخالية', unit: 'كجم' },
+    { key: 'body_fat_mass_kg',    label: 'كتلة الدهون',    unit: 'كجم' },
+    { key: 'soft_lean_mass_kg',   label: 'الكتلة الهزيلة', unit: 'كجم' },
+  ]},
+  { label: 'المؤشرات البيولوجية', cols: [
+    { key: 'total_body_water_kg', label: 'الماء الكلي',       unit: 'كجم'  },
+    { key: 'protein_kg',          label: 'البروتين',           unit: 'كجم'  },
+    { key: 'mineral_kg',          label: 'المعادن',            unit: 'كجم'  },
+    { key: 'visceral_fat_index',  label: 'الدهون الحشوية'                   },
+    { key: 'bmr_kcal',            label: 'BMR',                unit: 'kcal' },
+    { key: 'tee_kcal',            label: 'TEE',                unit: 'kcal' },
+  ]},
+  { label: 'المحيطات (سم)', cols: [
+    { key: 'waist_cm',          label: 'الخصر'      },
+    { key: 'chest_cm',          label: 'الصدر'      },
+    { key: 'hip_cm',            label: 'الورك'      },
+    { key: 'left_upper_arm_cm', label: 'عضد يسرى'  },
+    { key: 'right_upper_arm_cm',label: 'عضد يمنى'  },
+    { key: 'shoulder_width_cm', label: 'الكتفين'    },
+    { key: 'left_thigh_cm',     label: 'فخذ يسرى'  },
+    { key: 'right_thigh_cm',    label: 'فخذ يمنى'  },
+    { key: 'waist_hip_ratio',   label: 'خصر/ورك'   },
+  ]},
+]
+const BC_ALL_COLS = BC_COL_GROUPS.flatMap(g => g.cols)
+const BC_DEFAULT_COLS = new Set(['weight_kg','height_cm','bmi','ffmi','body_fat_percentage','muscle_mass_kg','fat_free_mass_kg','visceral_fat_index','bmr_kcal','waist_cm'])
+
 // ── Sort arrows for indicator table ──────────────────────────────────────────
 function IndSortBtn({ colKey, sortCol, sortDir, onSort }: {
   colKey: string; sortCol: string | null; sortDir: 'asc' | 'desc'
@@ -148,7 +186,7 @@ function calcIndicatorImprovement(
 export function ReportsPage() {
   const [programs, setPrograms]         = useState<Program[]>([])
   const [loading, setLoading]           = useState(true)
-  const [activeTab, setActiveTab]       = useState<'player' | 'indicator'>('player')
+  const [activeTab, setActiveTab]       = useState<'player' | 'indicator' | 'bodycomp'>('player')
 
   // ── Player report tab ─────────────────────────────────────────────────────
   const [players,  setPlayers]          = useState<Player[]>([])
@@ -170,6 +208,15 @@ export function ReportsPage() {
   const [printingInd, setPrintingInd]     = useState(false)
   const [indSortCol, setIndSortCol]       = useState<string | null>(null)
   const [indSortDir, setIndSortDir]       = useState<'asc' | 'desc'>('desc')
+
+  // ── Body comp sheet tab ───────────────────────────────────────────────────
+  const [bcRepProgramId, setBcRepProgramId] = useState('')
+  const [bcRepPlayers, setBcRepPlayers]     = useState<Player[]>([])
+  const [bcRepRecords, setBcRepRecords]     = useState<Record<string, BodyCompositionRecord | null>>({})
+  const [bcRepLoading, setBcRepLoading]     = useState(false)
+  const [bcRepSelCols, setBcRepSelCols]     = useState<Set<string>>(new Set(BC_DEFAULT_COLS))
+  const [bcRepSortCol, setBcRepSortCol]     = useState<string | null>(null)
+  const [bcRepSortDir, setBcRepSortDir]     = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => { init() }, [])
   const init = async () => {
@@ -309,6 +356,24 @@ export function ReportsPage() {
     setLoadingIndR(false)
   }
 
+  const onBcRepProgramChange = async (pid: string) => {
+    setBcRepProgramId(pid); setBcRepPlayers([]); setBcRepRecords({}); setBcRepSortCol(null)
+    if (!pid) return
+    setBcRepLoading(true)
+    try {
+      const pp = await playersService.getProgramPlayers(pid).catch(() => [])
+      const pl = pp.map(p => p.player).filter(Boolean) as Player[]
+      setBcRepPlayers(pl)
+      const recs: Record<string, BodyCompositionRecord | null> = {}
+      await Promise.all(pl.map(async p => {
+        const data = await bodyCompositionService.getRecords(p.id, pid).catch(() => [])
+        recs[p.id] = data.length > 0 ? data[data.length - 1] : null
+      }))
+      setBcRepRecords(recs)
+    } catch(e) { console.error(e) }
+    setBcRepLoading(false)
+  }
+
   // ── Print player report ───────────────────────────────────────────────────
   const handlePrint = () => {
     if (!reportRef.current) return
@@ -390,6 +455,19 @@ ${indReportRef.current.innerHTML}
     setIndSortCol(col); setIndSortDir(dir)
   }
 
+  const sortedBcRepPlayers = bcRepSortCol
+    ? [...bcRepPlayers].sort((a, b) => {
+        const ar = bcRepRecords[a.id]
+        const br = bcRepRecords[b.id]
+        const av = ar ? (ar as Record<string, unknown>)[bcRepSortCol] as number | null : null
+        const bv = br ? (br as Record<string, unknown>)[bcRepSortCol] as number | null : null
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return bcRepSortDir === 'asc' ? av - bv : bv - av
+      })
+    : bcRepPlayers
+
   const sortedIndPlayers = (() => {
     if (!indReport) return []
     const pl = [...indReport.players]
@@ -429,6 +507,12 @@ ${indReportRef.current.innerHTML}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === 'indicator' ? 'bg-[#0f2040] text-white font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
           >
             <BarChart3 className="w-4 h-4" /> كشف نتائج المؤشر
+          </button>
+          <button
+            onClick={() => setActiveTab('bodycomp')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === 'bodycomp' ? 'bg-[#0f2040] text-white font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Scale className="w-4 h-4" /> كشف قياسات الجسم
           </button>
         </div>
 
@@ -1160,6 +1244,136 @@ ${indReportRef.current.innerHTML}
                                     )}
                                   </td>
                                 )}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Body Composition Sheet Tab ──────────────────────────────────── */}
+        {activeTab === 'bodycomp' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-800">كشف قياسات الجسم</h2>
+
+            <Select label="البرنامج" value={bcRepProgramId} onChange={e => onBcRepProgramChange(e.target.value)}>
+              <option value="">اختر البرنامج...</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+
+            {!bcRepProgramId && !bcRepLoading && (
+              <EmptyState title="اختر برنامجاً" description="لعرض كشف قياسات الجسم لجميع اللاعبين" icon={<Scale className="w-10 h-10" />} />
+            )}
+            {bcRepLoading && <LoadingSpinner message="جار تحميل البيانات..." />}
+            {!bcRepLoading && bcRepProgramId && bcRepPlayers.length === 0 && (
+              <EmptyState title="لا يوجد لاعبون" description="لا يوجد لاعبون مسجلون في هذا البرنامج" icon={<Scale className="w-10 h-10" />} />
+            )}
+
+            {!bcRepLoading && bcRepPlayers.length > 0 && (
+              <>
+                {/* Column selector */}
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">اختر المؤشرات للعرض في الجدول</p>
+                  <div className="space-y-3">
+                    {BC_COL_GROUPS.map(group => (
+                      <div key={group.label}>
+                        <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{group.label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.cols.map(col => {
+                            const checked = bcRepSelCols.has(col.key)
+                            return (
+                              <label
+                                key={col.key}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none ${checked ? 'bg-[#0f2040] border-[#0f2040] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-[#0f2040] hover:text-[#0f2040]'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="hidden"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = new Set(bcRepSelCols)
+                                    if (e.target.checked) next.add(col.key)
+                                    else next.delete(col.key)
+                                    setBcRepSelCols(next)
+                                  }}
+                                />
+                                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-white border-white' : 'border-gray-300'}`}>
+                                  {checked && <span className="block w-1.5 h-1.5 rounded-sm bg-[#0f2040]" />}
+                                </span>
+                                {col.label}
+                                {col.unit && <span className={`text-[10px] ${checked ? 'opacity-70' : 'text-gray-400'}`}>({col.unit})</span>}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                    <button onClick={() => setBcRepSelCols(new Set(BC_ALL_COLS.map(c => c.key)))} className="text-xs text-[#0f2040] hover:underline">تحديد الكل</button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={() => setBcRepSelCols(new Set(BC_DEFAULT_COLS))} className="text-xs text-[#0f2040] hover:underline">الافتراضي</button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={() => setBcRepSelCols(new Set())} className="text-xs text-gray-400 hover:underline">إلغاء الكل</button>
+                  </div>
+                </div>
+
+                {bcRepSelCols.size === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">اختر مؤشراً واحداً على الأقل لعرض الجدول</p>
+                ) : (
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[#0f2040] text-white">
+                          <tr>
+                            <th className="px-4 py-3 text-right text-xs font-semibold sticky right-0 bg-[#0f2040] z-10 min-w-[140px]">اللاعب</th>
+                            <th className="px-3 py-3 text-center text-xs font-semibold whitespace-nowrap min-w-[95px]">آخر قياس</th>
+                            {BC_ALL_COLS.filter(col => bcRepSelCols.has(col.key)).map(col => (
+                              <th key={col.key} className="px-3 py-3 text-xs font-semibold whitespace-nowrap min-w-[85px]">
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <div className="text-center">
+                                    <div>{col.label}</div>
+                                    {col.unit && <div className="font-normal opacity-60 text-[9px]">({col.unit})</div>}
+                                  </div>
+                                  <IndSortBtn colKey={col.key} sortCol={bcRepSortCol} sortDir={bcRepSortDir} onSort={(k, d) => { setBcRepSortCol(k); setBcRepSortDir(d) }} />
+                                </div>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {sortedBcRepPlayers.map((player, idx) => {
+                            const rec = bcRepRecords[player.id]
+                            return (
+                              <tr key={player.id} className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100/50'}>
+                                <td className={`px-4 py-3 font-semibold text-gray-800 whitespace-nowrap sticky right-0 z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-[#0f2040] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                      {player.full_name.charAt(0)}
+                                    </div>
+                                    {player.full_name}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3 text-center text-xs text-gray-400 whitespace-nowrap">
+                                  {rec?.measurement_date ?? '—'}
+                                </td>
+                                {BC_ALL_COLS.filter(col => bcRepSelCols.has(col.key)).map(col => {
+                                  const val = rec ? (rec as Record<string, unknown>)[col.key] as number | undefined : undefined
+                                  const isSorted = bcRepSortCol === col.key
+                                  return (
+                                    <td key={col.key} className={`px-3 py-3 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
+                                      <span className={`text-sm font-medium ${val == null ? 'text-gray-300' : isSorted ? 'text-[#0f2040] font-bold' : 'text-gray-800'}`}>
+                                        {val != null ? val.toFixed(1) : '—'}
+                                      </span>
+                                    </td>
+                                  )
+                                })}
                               </tr>
                             )
                           })}
