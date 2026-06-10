@@ -19,7 +19,7 @@ import {
   type BodyCompositionRecord,
 } from '../../types'
 import { getIndicatorValue } from '../../utils/progress'
-import { FileText, Printer, BarChart3 } from 'lucide-react'
+import { FileText, Printer, BarChart3, ChevronUp, ChevronDown } from 'lucide-react'
 
 // ── special note categories ───────────────────────────────────────────────────
 const CAT_TARGETS   = '__targets__'
@@ -103,6 +103,25 @@ interface ReportData {
   bodyRecs:     BodyCompositionRecord[]
 }
 
+// ── Sort arrows for indicator table ──────────────────────────────────────────
+function IndSortBtn({ colKey, sortCol, sortDir, onSort }: {
+  colKey: string; sortCol: string | null; sortDir: 'asc' | 'desc'
+  onSort: (col: string, dir: 'asc' | 'desc') => void
+}) {
+  return (
+    <span className="inline-flex flex-col mr-1 shrink-0">
+      <ChevronUp
+        className={`w-2.5 h-2.5 cursor-pointer transition-colors ${sortCol === colKey && sortDir === 'asc' ? 'text-[#d4af37]' : 'text-white/35 hover:text-white/70'}`}
+        onClick={e => { e.stopPropagation(); onSort(colKey, 'asc') }}
+      />
+      <ChevronDown
+        className={`w-2.5 h-2.5 cursor-pointer transition-colors ${sortCol === colKey && sortDir === 'desc' ? 'text-[#d4af37]' : 'text-white/35 hover:text-white/70'}`}
+        onClick={e => { e.stopPropagation(); onSort(colKey, 'desc') }}
+      />
+    </span>
+  )
+}
+
 // ── Indicator report types ────────────────────────────────────────────────────
 type CellValue = { numeric: number | null; text: string | null }
 interface IndicatorReportData {
@@ -149,6 +168,8 @@ export function ReportsPage() {
   const [loadingIndR, setLoadingIndR]     = useState(false)
   const indReportRef = useRef<HTMLDivElement>(null)
   const [printingInd, setPrintingInd]     = useState(false)
+  const [indSortCol, setIndSortCol]       = useState<string | null>(null)
+  const [indSortDir, setIndSortDir]       = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => { init() }, [])
   const init = async () => {
@@ -364,6 +385,32 @@ ${indReportRef.current.innerHTML}
   if (loading) return <AppLayout title="التقارير"><LoadingSpinner /></AppLayout>
 
   const showImprovementCol = indReport && (indReport.indicator.type === 'numeric' || indReport.indicator.type === 'rating')
+
+  const handleIndSort = (col: string, dir: 'asc' | 'desc') => {
+    setIndSortCol(col); setIndSortDir(dir)
+  }
+
+  const sortedIndPlayers = (() => {
+    if (!indReport) return []
+    const pl = [...indReport.players]
+    if (!indSortCol) return pl
+    return pl.sort((a, b) => {
+      let av: number | null = null, bv: number | null = null
+      if (indSortCol === '__imp__') {
+        const ai = calcIndicatorImprovement(indReport.sessions, indReport.matrix[a.id] || {}, indReport.indicator)
+        const bi = calcIndicatorImprovement(indReport.sessions, indReport.matrix[b.id] || {}, indReport.indicator)
+        av = ai ? (ai.positive ? ai.pct : -ai.pct) : null
+        bv = bi ? (bi.positive ? bi.pct : -bi.pct) : null
+      } else {
+        av = indReport.matrix[a.id]?.[indSortCol]?.numeric ?? null
+        bv = indReport.matrix[b.id]?.[indSortCol]?.numeric ?? null
+      }
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      return indSortDir === 'asc' ? av - bv : bv - av
+    })
+  })()
 
   return (
     <AppLayout title="التقارير">
@@ -1042,20 +1089,30 @@ ${indReportRef.current.innerHTML}
                             </th>
                             {indReport.sessions.map(s => (
                               <th key={s.id} className="px-4 py-3 text-center font-semibold text-xs whitespace-nowrap min-w-[100px]">
-                                <div>{s.name}</div>
-                                <div className="font-normal opacity-70 text-[10px]">{s.session_date}</div>
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <div>
+                                    <div>{s.name}</div>
+                                    <div className="font-normal opacity-70 text-[10px]">{s.session_date}</div>
+                                  </div>
+                                  <IndSortBtn colKey={s.id} sortCol={indSortCol} sortDir={indSortDir} onSort={handleIndSort} />
+                                </div>
                               </th>
                             ))}
                             {showImprovementCol && (
                               <th className="px-4 py-3 text-center font-semibold text-xs whitespace-nowrap bg-[#1e3a6e]">
-                                التحسن
-                                <div className="font-normal opacity-70 text-[10px]">(أول ← آخر)</div>
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <div>
+                                    <div>التحسن</div>
+                                    <div className="font-normal opacity-70 text-[10px]">(أول ← آخر)</div>
+                                  </div>
+                                  <IndSortBtn colKey="__imp__" sortCol={indSortCol} sortDir={indSortDir} onSort={handleIndSort} />
+                                </div>
                               </th>
                             )}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                          {indReport.players.map((player, idx) => {
+                          {sortedIndPlayers.map((player, idx) => {
                             const playerCells = indReport.matrix[player.id] || {}
                             const imp = showImprovementCol
                               ? calcIndicatorImprovement(indReport.sessions, playerCells, indReport.indicator)
@@ -1073,6 +1130,7 @@ ${indReportRef.current.innerHTML}
                                 </td>
                                 {indReport.sessions.map(s => {
                                   const cell = playerCells[s.id]
+                                  const isSorted = indSortCol === s.id
                                   let display = '—'
                                   if (cell) {
                                     if (cell.numeric !== null) {
@@ -1084,8 +1142,8 @@ ${indReportRef.current.innerHTML}
                                     }
                                   }
                                   return (
-                                    <td key={s.id} className="px-4 py-3 text-center">
-                                      <span className={`text-sm font-medium ${display === '—' ? 'text-gray-300' : 'text-gray-800'}`}>
+                                    <td key={s.id} className={`px-4 py-3 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
+                                      <span className={`text-sm font-medium ${display === '—' ? 'text-gray-300' : isSorted ? 'text-[#0f2040] font-bold' : 'text-gray-800'}`}>
                                         {display}
                                       </span>
                                     </td>

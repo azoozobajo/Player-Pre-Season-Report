@@ -137,6 +137,25 @@ function formToRecord(form: Record<string, string>): Partial<BodyCompositionReco
   }
 }
 
+// ── Sort arrows ───────────────────────────────────────────────────────────────
+function SortBtn({ colKey, sortCol, sortDir, onSort }: {
+  colKey: string; sortCol: string | null; sortDir: 'asc' | 'desc'
+  onSort: (col: string, dir: 'asc' | 'desc') => void
+}) {
+  return (
+    <span className="inline-flex flex-col mr-1 shrink-0">
+      <ChevronUp
+        className={`w-2.5 h-2.5 cursor-pointer transition-colors ${sortCol === colKey && sortDir === 'asc' ? 'text-[#d4af37]' : 'text-white/35 hover:text-white/70'}`}
+        onClick={e => { e.stopPropagation(); onSort(colKey, 'asc') }}
+      />
+      <ChevronDown
+        className={`w-2.5 h-2.5 cursor-pointer transition-colors ${sortCol === colKey && sortDir === 'desc' ? 'text-[#d4af37]' : 'text-white/35 hover:text-white/70'}`}
+        onClick={e => { e.stopPropagation(); onSort(colKey, 'desc') }}
+      />
+    </span>
+  )
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 export function BodyCompositionPage() {
   const [programs, setPrograms]           = useState<Program[]>([])
@@ -153,6 +172,11 @@ export function BodyCompositionPage() {
   const [confirmDelete, setConfirmDelete] = useState<BodyCompositionRecord | null>(null)
   const [activeTab, setActiveTab]         = useState<'summary' | 'charts' | 'records'>('summary')
   const [chartType, setChartType]         = useState<'trend' | 'segment' | 'radar'>('trend')
+  const [viewMode, setViewMode]           = useState<'individual' | 'overview'>('individual')
+  const [overviewRecords, setOverviewRecords] = useState<Record<string, BodyCompositionRecord | null>>({})
+  const [overviewLoading, setOverviewLoading] = useState(false)
+  const [bcSortCol, setBcSortCol]         = useState<string | null>(null)
+  const [bcSortDir, setBcSortDir]         = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => { loadPrograms() }, [])
 
@@ -164,9 +188,24 @@ export function BodyCompositionPage() {
 
   const handleProgramChange = async (programId: string) => {
     setSelectedProgramId(programId); setSelectedPlayerId(''); setRecords([]); setSelectedPlayer(null)
+    setOverviewRecords({}); setBcSortCol(null)
     if (!programId) return
     const pp = await playersService.getProgramPlayers(programId).catch(() => [])
     setPlayers(pp.map(p => p.player).filter(Boolean) as Player[])
+  }
+
+  const handleViewModeChange = async (mode: 'individual' | 'overview') => {
+    setViewMode(mode)
+    if (mode === 'overview' && selectedProgramId) {
+      setOverviewLoading(true)
+      const recs: Record<string, BodyCompositionRecord | null> = {}
+      await Promise.all(players.map(async p => {
+        const data = await bodyCompositionService.getRecords(p.id, selectedProgramId).catch(() => [])
+        recs[p.id] = data.length > 0 ? data[data.length - 1] : null
+      }))
+      setOverviewRecords(recs)
+      setOverviewLoading(false)
+    }
   }
 
   const handlePlayerChange = async (playerId: string) => {
@@ -224,6 +263,33 @@ export function BodyCompositionPage() {
   const first  = records[0]
   const age    = calcAge(selectedPlayer?.date_of_birth)
 
+  const bcColumns: { key: string; label: string; unit?: string }[] = [
+    { key: 'weight_kg',           label: 'الوزن',       unit: 'كجم'  },
+    { key: 'height_cm',           label: 'الطول',       unit: 'سم'   },
+    { key: 'bmi',                 label: 'BMI'                        },
+    { key: 'ffmi',                label: 'FFMI'                       },
+    { key: 'body_fat_percentage', label: 'دهون%',       unit: '%'    },
+    { key: 'muscle_mass_kg',      label: 'عضلات',       unit: 'كجم'  },
+    { key: 'fat_free_mass_kg',    label: 'كتلة خالية',  unit: 'كجم'  },
+    { key: 'body_fat_mass_kg',    label: 'كتلة دهون',   unit: 'كجم'  },
+    { key: 'visceral_fat_index',  label: 'دهون حشوية'               },
+    { key: 'bmr_kcal',            label: 'BMR',          unit: 'kcal' },
+    { key: 'waist_cm',            label: 'خصر',          unit: 'سم'   },
+  ]
+
+  const sortedOverviewPlayers = bcSortCol
+    ? [...players].sort((a, b) => {
+        const ar = overviewRecords[a.id]
+        const br = overviewRecords[b.id]
+        const av = ar ? (ar as Record<string, unknown>)[bcSortCol] as number | null : null
+        const bv = br ? (br as Record<string, unknown>)[bcSortCol] as number | null : null
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return bcSortDir === 'asc' ? av - bv : bv - av
+      })
+    : players
+
   // ── Chart data ────────────────────────────────────────────────────────────
   const trendData = records.map(r => ({
     date: r.measurement_date,
@@ -267,7 +333,7 @@ export function BodyCompositionPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800">متابعة قياسات تركيبة الجسم</h2>
-          {selectedPlayerId && (
+          {selectedPlayerId && viewMode === 'individual' && (
             <Button size="sm" onClick={openCreate}>
               <Plus className="w-4 h-4" /> قياس جديد
             </Button>
@@ -279,13 +345,88 @@ export function BodyCompositionPage() {
             <option value="">اختر البرنامج...</option>
             {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <Select label="اللاعب" value={selectedPlayerId} onChange={e => handlePlayerChange(e.target.value)} disabled={!selectedProgramId}>
-            <option value="">اختر اللاعب...</option>
-            {players.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-          </Select>
+          {viewMode === 'individual' && (
+            <Select label="اللاعب" value={selectedPlayerId} onChange={e => handlePlayerChange(e.target.value)} disabled={!selectedProgramId}>
+              <option value="">اختر اللاعب...</option>
+              {players.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </Select>
+          )}
         </div>
 
-        {!selectedPlayerId ? (
+        {selectedProgramId && (
+          <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100 w-fit">
+            {(['individual', 'overview'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => handleViewModeChange(m)}
+                className={`px-3 py-2 rounded-lg text-sm transition-all ${viewMode === m ? 'bg-[#0f2040] text-white font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                {m === 'individual' ? 'متابعة فردية' : 'كشف القياسات'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {viewMode === 'overview' ? (
+          overviewLoading ? (
+            <LoadingSpinner />
+          ) : players.length === 0 ? (
+            <EmptyState title="لا يوجد لاعبون" description="أضف لاعبين للبرنامج أولاً" icon={<Scale className="w-10 h-10" />} />
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#0f2040] text-white">
+                    <tr>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold sticky right-0 bg-[#0f2040] z-10 min-w-[130px]">اللاعب</th>
+                      <th className="px-3 py-2.5 text-center text-xs font-semibold whitespace-nowrap min-w-[95px]">آخر قياس</th>
+                      {bcColumns.map(col => (
+                        <th key={col.key} className="px-3 py-2.5 text-xs font-semibold whitespace-nowrap min-w-[80px]">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span>{col.label}</span>
+                            {col.unit && <span className="opacity-55 text-[9px]">({col.unit})</span>}
+                            <SortBtn colKey={col.key} sortCol={bcSortCol} sortDir={bcSortDir} onSort={(k, d) => { setBcSortCol(k); setBcSortDir(d) }} />
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {sortedOverviewPlayers.map((player, idx) => {
+                      const rec = overviewRecords[player.id]
+                      return (
+                        <tr key={player.id} className={idx % 2 === 0 ? 'bg-white hover:bg-blue-50/30' : 'bg-gray-50/50 hover:bg-blue-50/30'}>
+                          <td className={`px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap sticky right-0 z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-[#0f2040] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                {player.full_name.charAt(0)}
+                              </div>
+                              <span className="text-xs">{player.full_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-xs text-gray-400 whitespace-nowrap">
+                            {rec?.measurement_date ?? '—'}
+                          </td>
+                          {bcColumns.map(col => {
+                            const val = rec ? (rec as Record<string, unknown>)[col.key] as number | undefined : undefined
+                            const isSorted = bcSortCol === col.key
+                            return (
+                              <td key={col.key} className={`px-3 py-2.5 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
+                                <span className={`text-sm font-medium ${val == null ? 'text-gray-300' : isSorted ? 'text-[#0f2040] font-bold' : 'text-gray-800'}`}>
+                                  {f(val)}
+                                </span>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        ) : !selectedPlayerId ? (
           <EmptyState title="اختر برنامجاً ولاعباً" description="لمتابعة قياسات تركيبة الجسم" icon={<Scale className="w-10 h-10" />} />
         ) : records.length === 0 ? (
           <EmptyState
