@@ -459,8 +459,8 @@ ${indReportRef.current.innerHTML}
     ? [...bcRepPlayers].sort((a, b) => {
         const ar = bcRepRecords[a.id]
         const br = bcRepRecords[b.id]
-        const av = ar ? (ar as Record<string, unknown>)[bcRepSortCol] as number | null : null
-        const bv = br ? (br as Record<string, unknown>)[bcRepSortCol] as number | null : null
+        const av = ar ? (ar as unknown as Record<string, unknown>)[bcRepSortCol] as number | null : null
+        const bv = br ? (br as unknown as Record<string, unknown>)[bcRepSortCol] as number | null : null
         if (av == null && bv == null) return 0
         if (av == null) return 1
         if (bv == null) return -1
@@ -1364,7 +1364,7 @@ ${indReportRef.current.innerHTML}
                                   {rec?.measurement_date ?? '—'}
                                 </td>
                                 {BC_ALL_COLS.filter(col => bcRepSelCols.has(col.key)).map(col => {
-                                  const val = rec ? (rec as Record<string, unknown>)[col.key] as number | undefined : undefined
+                                  const val = rec ? (rec as unknown as Record<string, unknown>)[col.key] as number | undefined : undefined
                                   const isSorted = bcRepSortCol === col.key
                                   return (
                                     <td key={col.key} className={`px-3 py-3 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
