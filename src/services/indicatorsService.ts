@@ -10,6 +10,8 @@ export const indicatorsService = {
 
     if (programId) {
       query = query.eq('program_id', programId)
+    } else {
+      query = query.is('program_id', null)
     }
 
     const { data, error } = await query
