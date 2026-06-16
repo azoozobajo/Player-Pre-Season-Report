@@ -162,24 +162,10 @@ function IndSortBtn({ colKey, sortCol, sortDir, onSort }: {
 
 // ── Indicator report types ────────────────────────────────────────────────────
 type CellValue = { numeric: number | null; text: string | null }
-interface IndicatorReportData {
-  indicator: Indicator
-  sessions:  AssessmentSession[]
-  players:   Player[]
-  matrix:    Record<string, Record<string, CellValue>>
-}
-
-function calcIndicatorImprovement(
-  sessions: AssessmentSession[],
-  playerCells: Record<string, CellValue>,
-  indicator: Indicator
-): ImprovementResult | null {
-  if (indicator.type === 'text' || indicator.type === 'choice') return null
-  const values = sessions
-    .map(s => playerCells[s.id]?.numeric)
-    .filter((v): v is number => v !== null && v !== undefined)
-  if (values.length < 2) return null
-  return calcImprovement(values[0], values[values.length - 1], indicator.direction)
+interface MultiIndReport {
+  indicators: Indicator[]
+  players:    Player[]
+  matrix:     Record<string, Record<string, CellValue>>
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -198,16 +184,16 @@ export function ReportsPage() {
   const reportRef = useRef<HTMLDivElement>(null)
 
   // ── Indicator report tab ──────────────────────────────────────────────────
-  const [indProgramId, setIndProgramId]   = useState('')
-  const [indIndicators, setIndIndicators] = useState<Indicator[]>([])
-  const [indIndicatorId, setIndIndicatorId] = useState('')
-  const [indReport, setIndReport]         = useState<IndicatorReportData | null>(null)
-  const [loadingIndProg, setLoadingIndProg] = useState(false)
-  const [loadingIndR, setLoadingIndR]     = useState(false)
+  const [indProgramId, setIndProgramId]             = useState('')
+  const [indIndicators, setIndIndicators]           = useState<Indicator[]>([])
+  const [indSelIndicatorIds, setIndSelIndicatorIds] = useState<Set<string>>(new Set())
+  const [multiIndReport, setMultiIndReport]         = useState<MultiIndReport | null>(null)
+  const [loadingIndProg, setLoadingIndProg]         = useState(false)
+  const [loadingMultiInd, setLoadingMultiInd]       = useState(false)
   const indReportRef = useRef<HTMLDivElement>(null)
-  const [printingInd, setPrintingInd]     = useState(false)
-  const [indSortCol, setIndSortCol]       = useState<string | null>(null)
-  const [indSortDir, setIndSortDir]       = useState<'asc' | 'desc'>('desc')
+  const [printingInd, setPrintingInd]               = useState(false)
+  const [indSortCol, setIndSortCol]                 = useState<string | null>(null)
+  const [indSortDir, setIndSortDir]                 = useState<'asc' | 'desc'>('desc')
 
   // ── Body comp sheet tab ───────────────────────────────────────────────────
   const [bcRepProgramId, setBcRepProgramId] = useState('')
@@ -314,7 +300,7 @@ export function ReportsPage() {
 
   // ── Indicator report handlers ─────────────────────────────────────────────
   const onIndProgramChange = async (pid: string) => {
-    setIndProgramId(pid); setIndIndicatorId(''); setIndReport(null); setIndIndicators([])
+    setIndProgramId(pid); setIndSelIndicatorIds(new Set()); setMultiIndReport(null); setIndIndicators([])
     if (!pid) return
     setLoadingIndProg(true)
     const inds = await indicatorsService.getIndicators(pid).catch(() => [])
@@ -322,19 +308,14 @@ export function ReportsPage() {
     setLoadingIndProg(false)
   }
 
-  const onIndIndicatorChange = async (indId: string) => {
-    setIndIndicatorId(indId); setIndReport(null)
-    if (!indId || !indProgramId) return
-    setLoadingIndR(true)
+  const generateMultiIndReport = async () => {
+    if (indSelIndicatorIds.size === 0 || !indProgramId) return
+    setLoadingMultiInd(true)
     try {
-      const indicator = indIndicators.find(i => i.id === indId)
-      if (!indicator) { setLoadingIndR(false); return }
-
       const [sessions, programPlayers] = await Promise.all([
         assessmentsService.getSessions(indProgramId).catch(() => []),
         playersService.getProgramPlayers(indProgramId).catch(() => []),
       ])
-
       const sortedSessions = [...sessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
       const allPlayers = programPlayers.map(pp => pp.player).filter(Boolean) as Player[]
 
@@ -342,23 +323,24 @@ export function ReportsPage() {
         sortedSessions.map(s => assessmentsService.getResults(s.id).catch(() => []))
       )
 
+      // Latest value per player per indicator (iterate oldest→newest so last write wins)
       const matrix: Record<string, Record<string, CellValue>> = {}
-      for (let i = 0; i < sortedSessions.length; i++) {
-        const session = sortedSessions[i]
-        const results = allSessionResults[i].filter(r => r.indicator_id === indId)
+      for (const results of allSessionResults) {
         for (const r of results) {
+          if (!indSelIndicatorIds.has(r.indicator_id)) continue
           if (!matrix[r.player_id]) matrix[r.player_id] = {}
-          matrix[r.player_id][session.id] = {
+          matrix[r.player_id][r.indicator_id] = {
             numeric: r.value_numeric ?? r.value_rating ?? null,
             text: r.value_text ?? (r as { value_choice?: string }).value_choice ?? null,
           }
         }
       }
 
+      const selectedIndicators = indIndicators.filter(i => indSelIndicatorIds.has(i.id))
       const activePlayers = allPlayers.filter(p => matrix[p.id] && Object.keys(matrix[p.id]).length > 0)
-      setIndReport({ indicator, sessions: sortedSessions, players: activePlayers, matrix })
+      setMultiIndReport({ indicators: selectedIndicators, players: activePlayers, matrix })
     } catch(e) { console.error(e) }
-    setLoadingIndR(false)
+    setLoadingMultiInd(false)
   }
 
   const onBcRepProgramChange = async (pid: string) => {
@@ -419,11 +401,12 @@ ${reportRef.current.innerHTML}
     const win = window.open('', '_blank', 'width=900,height=800')
     if (!win) { alert('يرجى السماح بالنوافذ المنبثقة في المتصفح'); setPrintingInd(false); return }
     const prog = programs.find(p => p.id === indProgramId)
+    const indTitle = multiIndReport?.indicators.map(i => i.name_ar || i.name).join('، ') || 'المؤشرات'
     win.document.write(`<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>كشف ${indReport?.indicator.name_ar || 'المؤشر'}</title>
+<title>كشف ${indTitle}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, Helvetica, sans-serif; background: #fff; direction: rtl; font-size: 12px; }
@@ -436,7 +419,7 @@ th { background: #f0f4f8; font-weight: 700; font-size: 11px; }
 </head>
 <body>
 <div style="margin-bottom:12px">
-  <h2 style="font-size:16px;color:#0a1628;margin-bottom:4px">كشف نتائج: ${indReport?.indicator.name_ar || ''}</h2>
+  <h2 style="font-size:16px;color:#0a1628;margin-bottom:4px">كشف نتائج: ${indTitle}</h2>
   <p style="color:#888;font-size:11px">البرنامج: ${prog?.name || ''} • تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA')}</p>
 </div>
 ${indReportRef.current.innerHTML}
@@ -453,8 +436,6 @@ ${indReportRef.current.innerHTML}
   }
 
   if (loading) return <AppLayout title="التقارير"><LoadingSpinner /></AppLayout>
-
-  const showImprovementCol = indReport && (indReport.indicator.type === 'numeric' || indReport.indicator.type === 'rating')
 
   const handleIndSort = (col: string, dir: 'asc' | 'desc') => {
     setIndSortCol(col); setIndSortDir(dir)
@@ -474,20 +455,12 @@ ${indReportRef.current.innerHTML}
     : bcRepPlayers
 
   const sortedIndPlayers = (() => {
-    if (!indReport) return []
-    const pl = [...indReport.players]
+    if (!multiIndReport) return []
+    const pl = [...multiIndReport.players]
     if (!indSortCol) return pl
     return pl.sort((a, b) => {
-      let av: number | null = null, bv: number | null = null
-      if (indSortCol === '__imp__') {
-        const ai = calcIndicatorImprovement(indReport.sessions, indReport.matrix[a.id] || {}, indReport.indicator)
-        const bi = calcIndicatorImprovement(indReport.sessions, indReport.matrix[b.id] || {}, indReport.indicator)
-        av = ai ? (ai.positive ? ai.pct : -ai.pct) : null
-        bv = bi ? (bi.positive ? bi.pct : -bi.pct) : null
-      } else {
-        av = indReport.matrix[a.id]?.[indSortCol]?.numeric ?? null
-        bv = indReport.matrix[b.id]?.[indSortCol]?.numeric ?? null
-      }
+      const av = multiIndReport.matrix[a.id]?.[indSortCol]?.numeric ?? null
+      const bv = multiIndReport.matrix[b.id]?.[indSortCol]?.numeric ?? null
       if (av == null && bv == null) return 0
       if (av == null) return 1
       if (bv == null) return -1
@@ -1099,72 +1072,129 @@ ${indReportRef.current.innerHTML}
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <h2 className="text-lg font-semibold text-gray-800">كشف نتائج اللاعبين حسب المؤشر</h2>
-              {indReport && (
+              {multiIndReport && (
                 <Button onClick={handlePrintInd} loading={printingInd}>
                   <Printer className="w-4 h-4" /> طباعة / تحميل PDF
                 </Button>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select label="البرنامج" value={indProgramId} onChange={e => onIndProgramChange(e.target.value)}>
-                <option value="">اختر البرنامج...</option>
-                {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-              <Select
-                label="المؤشر"
-                value={indIndicatorId}
-                onChange={e => onIndIndicatorChange(e.target.value)}
-                disabled={!indProgramId || loadingIndProg}
-              >
-                <option value="">{loadingIndProg ? 'جار التحميل...' : 'اختر المؤشر...'}</option>
-                {indIndicators.map(i => <option key={i.id} value={i.id}>{i.name_ar || i.name}</option>)}
-              </Select>
-            </div>
+            <Select label="البرنامج" value={indProgramId} onChange={e => onIndProgramChange(e.target.value)}>
+              <option value="">اختر البرنامج...</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
 
-            {loadingIndR && <LoadingSpinner message="جار تحميل النتائج..." />}
-            {!indReport && !loadingIndR && (
+            {!indProgramId && !loadingIndProg && (
               <EmptyState
-                title="اختر برنامجاً ومؤشراً"
-                description="لعرض كشف نتائج اللاعبين"
+                title="اختر برنامجاً"
+                description="لعرض مؤشرات البرنامج واختيار ما تريد عرضه في الكشف"
                 icon={<BarChart3 className="w-10 h-10" />}
               />
             )}
 
-            {indReport && !loadingIndR && (
+            {loadingIndProg && <LoadingSpinner message="جار تحميل المؤشرات..." />}
+
+            {!loadingIndProg && indProgramId && indIndicators.length === 0 && (
+              <EmptyState
+                title="لا توجد مؤشرات"
+                description="لم يتم إضافة أي مؤشرات لهذا البرنامج بعد"
+                icon={<BarChart3 className="w-10 h-10" />}
+              />
+            )}
+
+            {/* Indicator selector (like body comp column selector) */}
+            {!loadingIndProg && indProgramId && indIndicators.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">اختر المؤشرات للعرض في الكشف</p>
+                <div className="space-y-3">
+                  {/* Group by category */}
+                  {(() => {
+                    const uncategorized = indIndicators.filter(i => !i.category_id)
+                    const categories = indIndicators
+                      .filter(i => i.category_id)
+                      .reduce<Record<string, { label: string; inds: typeof indIndicators }>>((acc, ind) => {
+                        const catId = ind.category_id!
+                        if (!acc[catId]) acc[catId] = { label: ind.category?.name_ar || ind.category?.name || 'أخرى', inds: [] }
+                        acc[catId].inds.push(ind)
+                        return acc
+                      }, {})
+                    const groups = [
+                      ...Object.values(categories),
+                      ...(uncategorized.length > 0 ? [{ label: 'بدون تصنيف', inds: uncategorized }] : []),
+                    ]
+                    return groups.map(group => (
+                      <div key={group.label}>
+                        <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{group.label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.inds.map(ind => {
+                            const checked = indSelIndicatorIds.has(ind.id)
+                            return (
+                              <label
+                                key={ind.id}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none ${checked ? 'bg-[#0f2040] border-[#0f2040] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-[#0f2040] hover:text-[#0f2040]'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="hidden"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = new Set(indSelIndicatorIds)
+                                    if (e.target.checked) next.add(ind.id)
+                                    else next.delete(ind.id)
+                                    setIndSelIndicatorIds(next)
+                                  }}
+                                />
+                                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-white border-white' : 'border-gray-300'}`}>
+                                  {checked && <span className="block w-1.5 h-1.5 rounded-sm bg-[#0f2040]" />}
+                                </span>
+                                {ind.name_ar || ind.name}
+                                {ind.unit && <span className={`text-[10px] ${checked ? 'opacity-70' : 'text-gray-400'}`}>({ind.unit})</span>}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex gap-2">
+                    <button onClick={() => setIndSelIndicatorIds(new Set(indIndicators.map(i => i.id)))} className="text-xs text-[#0f2040] hover:underline">تحديد الكل</button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={() => setIndSelIndicatorIds(new Set())} className="text-xs text-gray-400 hover:underline">إلغاء الكل</button>
+                  </div>
+                  <Button
+                    onClick={generateMultiIndReport}
+                    loading={loadingMultiInd}
+                    disabled={indSelIndicatorIds.size === 0}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    عرض الكشف{indSelIndicatorIds.size > 0 ? ` (${indSelIndicatorIds.size})` : ''}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {loadingMultiInd && <LoadingSpinner message="جار تحميل النتائج..." />}
+
+            {multiIndReport && !loadingMultiInd && (
               <>
                 {/* Summary bar */}
                 <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-6 flex-wrap">
                   <div>
-                    <p className="text-xs text-gray-400">المؤشر</p>
-                    <p className="text-sm font-semibold text-gray-900">{indReport.indicator.name_ar || indReport.indicator.name}</p>
-                  </div>
-                  {indReport.indicator.unit && (
-                    <div>
-                      <p className="text-xs text-gray-400">الوحدة</p>
-                      <p className="text-sm font-semibold text-gray-900">{indReport.indicator.unit}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-xs text-gray-400">عدد الجلسات</p>
-                    <p className="text-sm font-semibold text-gray-900">{indReport.sessions.length}</p>
+                    <p className="text-xs text-gray-400">المؤشرات المختارة</p>
+                    <p className="text-sm font-semibold text-gray-900">{multiIndReport.indicators.length} مؤشر</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-400">عدد اللاعبين</p>
-                    <p className="text-sm font-semibold text-gray-900">{indReport.players.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400">نوع المؤشر</p>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {indReport.indicator.type === 'numeric' ? 'رقمي' : indReport.indicator.type === 'rating' ? 'تقييم 1-10' : indReport.indicator.type === 'text' ? 'نصي' : 'خيارات'}
-                    </p>
+                    <p className="text-sm font-semibold text-gray-900">{multiIndReport.players.length} لاعب</p>
                   </div>
                 </div>
 
-                {indReport.players.length === 0 ? (
+                {multiIndReport.players.length === 0 ? (
                   <EmptyState
                     title="لا توجد نتائج"
-                    description="لم يتم تسجيل أي نتيجة لهذا المؤشر"
+                    description="لم يتم تسجيل أي نتيجة للمؤشرات المختارة"
                     icon={<BarChart3 className="w-10 h-10" />}
                   />
                 ) : (
@@ -1173,43 +1203,34 @@ ${indReportRef.current.innerHTML}
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-[#0f2040] text-white">
-                            <th className="px-4 py-3 text-right font-semibold text-xs whitespace-nowrap sticky right-0 bg-[#0f2040] z-10">
+                            <th className="px-3 py-3 text-center font-semibold text-xs whitespace-nowrap w-10 sticky right-0 bg-[#0f2040] z-10">
+                              #
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold text-xs whitespace-nowrap sticky bg-[#0f2040] z-10 min-w-[140px]" style={{ right: '40px' }}>
                               اسم اللاعب
                             </th>
-                            {indReport.sessions.map(s => (
-                              <th key={s.id} className="px-4 py-3 text-center font-semibold text-xs whitespace-nowrap min-w-[100px]">
+                            {multiIndReport.indicators.map(ind => (
+                              <th key={ind.id} className="px-4 py-3 text-center font-semibold text-xs whitespace-nowrap min-w-[110px]">
                                 <div className="flex items-center justify-center gap-0.5">
                                   <div>
-                                    <div>{s.name}</div>
-                                    <div className="font-normal opacity-70 text-[10px]">{s.session_date}</div>
+                                    <div>{ind.name_ar || ind.name}</div>
+                                    {ind.unit && <div className="font-normal opacity-70 text-[10px]">({ind.unit})</div>}
                                   </div>
-                                  <IndSortBtn colKey={s.id} sortCol={indSortCol} sortDir={indSortDir} onSort={handleIndSort} />
+                                  <IndSortBtn colKey={ind.id} sortCol={indSortCol} sortDir={indSortDir} onSort={handleIndSort} />
                                 </div>
                               </th>
                             ))}
-                            {showImprovementCol && (
-                              <th className="px-4 py-3 text-center font-semibold text-xs whitespace-nowrap bg-[#1e3a6e]">
-                                <div className="flex items-center justify-center gap-0.5">
-                                  <div>
-                                    <div>التحسن</div>
-                                    <div className="font-normal opacity-70 text-[10px]">(أول ← آخر)</div>
-                                  </div>
-                                  <IndSortBtn colKey="__imp__" sortCol={indSortCol} sortDir={indSortDir} onSort={handleIndSort} />
-                                </div>
-                              </th>
-                            )}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {sortedIndPlayers.map((player, idx) => {
-                            const playerCells = indReport.matrix[player.id] || {}
-                            const imp = showImprovementCol
-                              ? calcIndicatorImprovement(indReport.sessions, playerCells, indReport.indicator)
-                              : null
-
+                            const playerCells = multiIndReport.matrix[player.id] || {}
                             return (
-                              <tr key={player.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                <td className={`px-4 py-3 font-semibold text-gray-800 whitespace-nowrap sticky right-0 z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                              <tr key={player.id} className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100/50'}>
+                                <td className={`px-3 py-3 text-center text-xs font-bold text-gray-400 sticky right-0 z-10 w-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {idx + 1}
+                                </td>
+                                <td className={`px-4 py-3 font-semibold text-gray-800 whitespace-nowrap sticky z-10 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`} style={{ right: '40px' }}>
                                   <div className="flex items-center gap-2">
                                     <div className="w-7 h-7 rounded-full bg-[#0f2040] flex items-center justify-center text-white text-xs font-bold shrink-0">
                                       {player.full_name.charAt(0)}
@@ -1217,38 +1238,27 @@ ${indReportRef.current.innerHTML}
                                     {player.full_name}
                                   </div>
                                 </td>
-                                {indReport.sessions.map(s => {
-                                  const cell = playerCells[s.id]
-                                  const isSorted = indSortCol === s.id
+                                {multiIndReport.indicators.map(ind => {
+                                  const cell = playerCells[ind.id]
+                                  const isSorted = indSortCol === ind.id
                                   let display = '—'
                                   if (cell) {
                                     if (cell.numeric !== null) {
-                                      display = indReport.indicator.type === 'rating'
+                                      display = ind.type === 'rating'
                                         ? `${cell.numeric}/10`
-                                        : `${cell.numeric}${indReport.indicator.unit ? ' ' + indReport.indicator.unit : ''}`
+                                        : `${cell.numeric}${ind.unit ? ' ' + ind.unit : ''}`
                                     } else if (cell.text) {
                                       display = cell.text
                                     }
                                   }
                                   return (
-                                    <td key={s.id} className={`px-4 py-3 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
+                                    <td key={ind.id} className={`px-4 py-3 text-center ${isSorted ? 'bg-[#d4af37]/10' : ''}`}>
                                       <span className={`text-sm font-medium ${display === '—' ? 'text-gray-300' : isSorted ? 'text-[#0f2040] font-bold' : 'text-gray-800'}`}>
                                         {display}
                                       </span>
                                     </td>
                                   )
                                 })}
-                                {showImprovementCol && (
-                                  <td className="px-4 py-3 text-center bg-[#f8f9fb]">
-                                    {imp ? (
-                                      <span className={`text-sm font-bold ${imp.positive ? 'text-green-600' : 'text-red-500'}`}>
-                                        {imp.positive ? '▲' : '▼'} {imp.pct}%
-                                      </span>
-                                    ) : (
-                                      <span className="text-gray-300 text-sm">—</span>
-                                    )}
-                                  </td>
-                                )}
                               </tr>
                             )
                           })}
