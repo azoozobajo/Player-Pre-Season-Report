@@ -9,7 +9,7 @@ export const indicatorsService = {
       .order('sort_order')
 
     if (programId) {
-      query = query.or(`program_id.eq.${programId},program_id.is.null`)
+      query = query.eq('program_id', programId)
     }
 
     const { data, error } = await query
@@ -43,5 +43,15 @@ export const indicatorsService = {
   async deleteIndicator(id: string): Promise<void> {
     const { error } = await supabase.from('indicators').delete().eq('id', id)
     if (error) throw error
+  },
+
+  async getGlobalIndicators(): Promise<Indicator[]> {
+    const { data, error } = await supabase
+      .from('indicators')
+      .select('*, category:indicator_categories(*)')
+      .is('program_id', null)
+      .order('sort_order')
+    if (error) throw error
+    return data || []
   },
 }

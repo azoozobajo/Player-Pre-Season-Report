@@ -132,6 +132,14 @@ export interface AssessmentSession {
   updated_at: string;
 }
 
+export interface SessionIndicator {
+  id: string;
+  session_id: string;
+  indicator_id: string;
+  created_at: string;
+  indicator?: Indicator;
+}
+
 export interface AssessmentResult {
   id: string;
   session_id: string;

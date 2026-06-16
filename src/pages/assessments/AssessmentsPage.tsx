@@ -11,8 +11,15 @@ import { playersService } from '../../services/playersService'
 import { indicatorsService } from '../../services/indicatorsService'
 import { assessmentsService } from '../../services/assessmentsService'
 import { notesService } from '../../services/notesService'
-import { type Program, type Player, type Indicator, type AssessmentSession, type AssessmentResult, type CoachNote } from '../../types'
-import { Plus, ClipboardList, ChevronLeft, Save, Edit, Trash2, MessageSquare, ChevronDown, ChevronUp, CheckCircle, XCircle, Target, Lightbulb } from 'lucide-react'
+import {
+  type Program, type Player, type Indicator,
+  type AssessmentSession, type AssessmentResult, type CoachNote,
+} from '../../types'
+import {
+  Plus, ClipboardList, ChevronLeft, Save, Edit, Trash2,
+  MessageSquare, ChevronDown, ChevronUp, CheckCircle, XCircle,
+  Target, Lightbulb, BarChart3,
+} from 'lucide-react'
 
 // ── special categories for player-program evaluation ─────────────────────────
 const CAT_TARGETS   = '__targets__'
@@ -27,7 +34,12 @@ export function AssessmentsPage() {
   const [selectedSession, setSelectedSession] = useState<AssessmentSession | null>(null)
   const [players, setPlayers]               = useState<Player[]>([])
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [indicators, setIndicators]         = useState<Indicator[]>([])
+
+  // All program indicators
+  const [programIndicators, setProgramIndicators] = useState<Indicator[]>([])
+  // Only the indicators selected for the current session
+  const [sessionIndicators, setSessionIndicators] = useState<Indicator[]>([])
+
   const [values, setValues]                 = useState<Record<string, string>>({})
   const [indicatorNotes, setIndicatorNotes] = useState<Record<string, string>>({})
   const [expandedNotes, setExpandedNotes]   = useState<Record<string, boolean>>({})
@@ -37,7 +49,11 @@ export function AssessmentsPage() {
   // Session create/edit
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [editingSession, setEditingSession]     = useState<AssessmentSession | null>(null)
-  const [sessionForm, setSessionForm]           = useState({ name: '', session_date: new Date().toISOString().split('T')[0], notes: '' })
+  const [sessionForm, setSessionForm] = useState({
+    name: '', session_date: new Date().toISOString().split('T')[0], notes: '',
+  })
+  // Indicator selection in session modal (IDs of selected indicators)
+  const [sessionIndicatorIds, setSessionIndicatorIds] = useState<Set<string>>(new Set())
 
   // Player evaluation panel
   const [evalExpanded, setEvalExpanded]     = useState(false)
@@ -68,14 +84,15 @@ export function AssessmentsPage() {
     setSelectedProgram(program)
     setSelectedSession(null)
     setSelectedPlayer(null)
+    setSessionIndicators([])
     const [ss, pp, inds] = await Promise.all([
       assessmentsService.getSessions(program.id).catch(() => []),
       playersService.getProgramPlayers(program.id).catch(() => []),
       indicatorsService.getIndicators(program.id).catch(() => []),
     ])
     setSessions(ss)
-    setPlayers(pp.map(pp => pp.player).filter(Boolean) as Player[])
-    setIndicators(inds)
+    setPlayers(pp.map(p => p.player).filter(Boolean) as Player[])
+    setProgramIndicators(inds)
   }
 
   const selectPlayer = async (player: Player) => {
@@ -120,53 +137,101 @@ export function AssessmentsPage() {
     setGenRecs(map[CAT_RECS]?.content || '')
   }
 
+  const loadSessionIndicators = async (sessionId: string) => {
+    const si = await assessmentsService.getSessionIndicators(sessionId).catch(() => [])
+    if (si.length > 0) {
+      // Use only the indicators selected for this session
+      const ids = new Set(si.map(s => s.indicator_id))
+      setSessionIndicators(programIndicators.filter(i => ids.has(i.id)))
+    } else {
+      // Fallback: session has no stored indicators → show all program indicators
+      setSessionIndicators(programIndicators)
+    }
+  }
+
   const selectSession = async (session: AssessmentSession) => {
     setSelectedSession(session)
     setSelectedPlayer(null)
     setValues({})
     setIndicatorNotes({})
+    await loadSessionIndicators(session.id)
   }
 
   // ── session CRUD ────────────────────────────────────────────────────────────
   const openCreateSession = () => {
     setEditingSession(null)
     setSessionForm({ name: '', session_date: new Date().toISOString().split('T')[0], notes: '' })
+    // Default: select all program indicators
+    setSessionIndicatorIds(new Set(programIndicators.map(i => i.id)))
     setSessionModalOpen(true)
   }
-  const openEditSession = (s: AssessmentSession) => {
+
+  const openEditSession = async (s: AssessmentSession) => {
     setEditingSession(s)
     setSessionForm({ name: s.name, session_date: s.session_date, notes: s.notes || '' })
+    // Load existing session indicators
+    const si = await assessmentsService.getSessionIndicators(s.id).catch(() => [])
+    if (si.length > 0) {
+      setSessionIndicatorIds(new Set(si.map(x => x.indicator_id)))
+    } else {
+      setSessionIndicatorIds(new Set(programIndicators.map(i => i.id)))
+    }
     setSessionModalOpen(true)
   }
+
+  const toggleSessionIndicator = (id: string) => {
+    setSessionIndicatorIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const handleSessionModalSave = () => { editingSession ? setConfirmSaveEdit(true) : doCreateSession() }
+
   const doCreateSession = async () => {
     if (!selectedProgram) return
     setSaving(true)
     try {
       const s = await assessmentsService.createSession({ ...sessionForm, program_id: selectedProgram.id, is_complete: false })
+      await assessmentsService.setSessionIndicators(s.id, [...sessionIndicatorIds])
       setSessions(prev => [s, ...prev])
       setSessionModalOpen(false)
     } catch (e) { console.error(e) }
     setSaving(false)
   }
+
   const doUpdateSession = async () => {
     if (!editingSession) return
     setSaving(true)
     try {
       const u = await assessmentsService.updateSession(editingSession.id, sessionForm)
+      await assessmentsService.setSessionIndicators(u.id, [...sessionIndicatorIds])
       setSessions(prev => prev.map(s => s.id === u.id ? u : s))
-      if (selectedSession?.id === u.id) setSelectedSession(u)
-      setSessionModalOpen(false); setConfirmSaveEdit(false)
+      if (selectedSession?.id === u.id) {
+        setSelectedSession(u)
+        await loadSessionIndicators(u.id)
+      }
+      setSessionModalOpen(false)
+      setConfirmSaveEdit(false)
     } catch (e) { console.error(e) }
     setSaving(false)
   }
+
   const doDeleteSession = async () => {
     if (!confirmDelete.session) return
     setSaving(true)
     try {
       await assessmentsService.deleteSession(confirmDelete.session.id)
       setSessions(prev => prev.filter(s => s.id !== confirmDelete.session!.id))
-      if (selectedSession?.id === confirmDelete.session.id) { setSelectedSession(null); setSelectedPlayer(null); setValues({}); setIndicatorNotes({}) }
+      if (selectedSession?.id === confirmDelete.session.id) {
+        setSelectedSession(null)
+        setSelectedPlayer(null)
+        setValues({})
+        setIndicatorNotes({})
+        setSessionIndicators([])
+      }
     } catch (e) { console.error(e) }
     setSaving(false)
     setConfirmDelete({ open: false, session: null })
@@ -180,7 +245,7 @@ export function AssessmentsPage() {
     try {
       for (const [indicatorId, value] of Object.entries(values)) {
         if (!value && !indicatorNotes[indicatorId]) continue
-        const indicator = indicators.find(i => i.id === indicatorId)
+        const indicator = sessionIndicators.find(i => i.id === indicatorId)
         if (!indicator) continue
         const resultData: Omit<AssessmentResult, 'id' | 'created_at' | 'updated_at' | 'indicator' | 'player'> = {
           session_id: selectedSession.id,
@@ -214,11 +279,10 @@ export function AssessmentsPage() {
     for (const { cat, content } of toSave) {
       const existing = evalNotes[cat]
       if (existing) {
-        await notesService.createCoachNote({ // we reuse create but upsert-like via delete+create
+        await notesService.createCoachNote({
           player_id: selectedPlayer.id, program_id: selectedProgram.id,
           note_date: today, content, category: cat,
         }).catch(async () => {
-          // note already exists – delete and recreate
           await notesService.deleteCoachNote(existing.id).catch(() => {})
           await notesService.createCoachNote({ player_id: selectedPlayer.id, program_id: selectedProgram.id, note_date: today, content, category: cat }).catch(console.error)
         })
@@ -270,6 +334,11 @@ export function AssessmentsPage() {
             <div className="flex items-center gap-3">
               <Button variant="outline" size="sm" onClick={() => setSelectedProgram(null)}>← العودة</Button>
               <span className="text-sm text-gray-600">البرنامج: <strong>{selectedProgram.name}</strong></span>
+              {programIndicators.length === 0 && (
+                <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                  لا توجد مؤشرات — أضف مؤشرات من صفحة البرامج أولاً
+                </span>
+              )}
             </div>
 
             {/* 3 column grid */}
@@ -278,7 +347,9 @@ export function AssessmentsPage() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-sm text-gray-800">الجلسات</h3>
-                  <Button size="sm" onClick={openCreateSession}><Plus className="w-3 h-3" /></Button>
+                  <Button size="sm" onClick={openCreateSession} disabled={programIndicators.length === 0}>
+                    <Plus className="w-3 h-3" />
+                  </Button>
                 </div>
                 {sessions.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-4">لا توجد جلسات</p>
@@ -334,18 +405,21 @@ export function AssessmentsPage() {
                 </div>
                 {!selectedPlayer ? (
                   <p className="text-xs text-gray-400 text-center py-4">اختر لاعباً أولاً</p>
-                ) : indicators.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-4">لا توجد مؤشرات</p>
+                ) : sessionIndicators.length === 0 ? (
+                  <div className="text-center py-6 text-gray-400">
+                    <BarChart3 className="w-8 h-8 mx-auto mb-2 text-gray-200" />
+                    <p className="text-xs">لم يتم تحديد مؤشرات لهذه الجلسة</p>
+                    <p className="text-xs text-gray-300 mt-1">عدّل الجلسة لإضافة المؤشرات</p>
+                  </div>
                 ) : (
                   <div className="space-y-4 max-h-[420px] overflow-y-auto pl-1">
-                    {indicators.map(indicator => (
+                    {sessionIndicators.map(indicator => (
                       <div key={indicator.id} className="border border-gray-100 rounded-lg p-2.5 bg-gray-50/50">
                         <label className="text-xs font-semibold text-gray-700 block mb-1.5">
                           {indicator.name_ar || indicator.name}
                           {indicator.unit && <span className="text-gray-400 font-normal mr-1">({indicator.unit})</span>}
                         </label>
 
-                        {/* Value input */}
                         {indicator.type === 'numeric' && (
                           <input type="number" value={values[indicator.id] || ''} onChange={e => setValues(v => ({ ...v, [indicator.id]: e.target.value }))} className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#0f2040] bg-white" min={indicator.min_value} max={indicator.max_value} />
                         )}
@@ -370,7 +444,6 @@ export function AssessmentsPage() {
                           </select>
                         )}
 
-                        {/* Coach comment toggle */}
                         <button
                           onClick={() => setExpandedNotes(n => ({ ...n, [indicator.id]: !n[indicator.id] }))}
                           className="flex items-center gap-1 mt-1.5 text-xs text-gray-400 hover:text-[#0f2040] transition-colors"
@@ -418,32 +491,17 @@ export function AssessmentsPage() {
                 {evalExpanded && (
                   <div className="border-t border-gray-100 p-5">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-                      {/* Targets */}
                       <div>
                         <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2">
                           <Target className="w-4 h-4 text-blue-500" /> المستهدفات
                         </label>
-                        <textarea
-                          rows={4}
-                          placeholder="ما الذي يستهدف اللاعب تحقيقه خلال البرنامج؟"
-                          value={targets}
-                          onChange={e => setTargets(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                        />
+                        <textarea rows={4} placeholder="ما الذي يستهدف اللاعب تحقيقه خلال البرنامج؟" value={targets} onChange={e => setTargets(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
                         <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 mb-2 mt-4">
                           <Lightbulb className="w-4 h-4 text-yellow-500" /> التوصيات
                         </label>
-                        <textarea
-                          rows={4}
-                          placeholder="التوصيات النهائية للمدرب..."
-                          value={genRecs}
-                          onChange={e => setGenRecs(e.target.value)}
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none"
-                        />
+                        <textarea rows={4} placeholder="التوصيات النهائية للمدرب..." value={genRecs} onChange={e => setGenRecs(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none" />
                       </div>
 
-                      {/* Positives */}
                       <div>
                         <label className="flex items-center gap-1.5 text-sm font-semibold text-green-700 mb-2">
                           <CheckCircle className="w-4 h-4 text-green-500" /> الإيجابيات
@@ -459,19 +517,11 @@ export function AssessmentsPage() {
                           ))}
                         </div>
                         <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={posInput}
-                            onChange={e => setPosInput(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { addBullet(positives, setPositives, posInput, () => setPosInput('')); e.preventDefault() } }}
-                            placeholder="اكتب واضغط Enter..."
-                            className="flex-1 px-2.5 py-1.5 text-xs border border-green-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-400 bg-green-50"
-                          />
+                          <input type="text" value={posInput} onChange={e => setPosInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { addBullet(positives, setPositives, posInput, () => setPosInput('')); e.preventDefault() } }} placeholder="اكتب واضغط Enter..." className="flex-1 px-2.5 py-1.5 text-xs border border-green-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-400 bg-green-50" />
                           <button onClick={() => addBullet(positives, setPositives, posInput, () => setPosInput(''))} className="px-2.5 py-1.5 bg-green-500 text-white rounded-lg text-xs hover:bg-green-600"><Plus className="w-3 h-3" /></button>
                         </div>
                       </div>
 
-                      {/* Negatives */}
                       <div>
                         <label className="flex items-center gap-1.5 text-sm font-semibold text-red-700 mb-2">
                           <XCircle className="w-4 h-4 text-red-500" /> السلبيات / نقاط التطوير
@@ -487,14 +537,7 @@ export function AssessmentsPage() {
                           ))}
                         </div>
                         <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={negInput}
-                            onChange={e => setNegInput(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') { addBullet(negatives, setNegatives, negInput, () => setNegInput('')); e.preventDefault() } }}
-                            placeholder="اكتب واضغط Enter..."
-                            className="flex-1 px-2.5 py-1.5 text-xs border border-red-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 bg-red-50"
-                          />
+                          <input type="text" value={negInput} onChange={e => setNegInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { addBullet(negatives, setNegatives, negInput, () => setNegInput('')); e.preventDefault() } }} placeholder="اكتب واضغط Enter..." className="flex-1 px-2.5 py-1.5 text-xs border border-red-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-400 bg-red-50" />
                           <button onClick={() => addBullet(negatives, setNegatives, negInput, () => setNegInput(''))} className="px-2.5 py-1.5 bg-red-500 text-white rounded-lg text-xs hover:bg-red-600"><Plus className="w-3 h-3" /></button>
                         </div>
                       </div>
@@ -514,14 +557,56 @@ export function AssessmentsPage() {
       </div>
 
       {/* Session modal */}
-      <Modal open={sessionModalOpen} onClose={() => setSessionModalOpen(false)} title={editingSession ? 'تعديل الجلسة' : 'جلسة تقييم جديدة'}>
+      <Modal open={sessionModalOpen} onClose={() => setSessionModalOpen(false)} title={editingSession ? 'تعديل الجلسة' : 'جلسة تقييم جديدة'} size="lg">
         <div className="space-y-4">
           <Input label="اسم الجلسة *" value={sessionForm.name} onChange={e => setSessionForm(f => ({ ...f, name: e.target.value }))} placeholder="مثال: تقييم الأسبوع الأول" />
           <Input label="تاريخ الجلسة" type="date" value={sessionForm.session_date} onChange={e => setSessionForm(f => ({ ...f, session_date: e.target.value }))} />
           <textarea className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0f2040]" rows={2} placeholder="ملاحظات..." value={sessionForm.notes} onChange={e => setSessionForm(f => ({ ...f, notes: e.target.value }))} />
+
+          {/* Indicator selection */}
+          {programIndicators.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">المؤشرات التي ستُقاس في هذه الجلسة</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setSessionIndicatorIds(new Set(programIndicators.map(i => i.id)))} className="text-xs text-[#0f2040] hover:underline">تحديد الكل</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={() => setSessionIndicatorIds(new Set())} className="text-xs text-gray-400 hover:underline">إلغاء الكل</button>
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                {programIndicators.map(ind => (
+                  <label key={ind.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={sessionIndicatorIds.has(ind.id)}
+                      onChange={() => toggleSessionIndicator(ind.id)}
+                      className="rounded text-[#0f2040]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{ind.name_ar || ind.name}</p>
+                      {ind.unit && <p className="text-xs text-gray-400">{ind.unit}</p>}
+                    </div>
+                    {ind.category && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ind.category.color || '#6b7280' }} />
+                        {ind.category.name_ar || ind.category.name}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {sessionIndicatorIds.size === 0 && (
+                <p className="text-xs text-amber-600 mt-1">يجب اختيار مؤشر واحد على الأقل</p>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={() => setSessionModalOpen(false)}>إلغاء</Button>
-            <Button onClick={handleSessionModalSave} loading={saving} disabled={!sessionForm.name}>{editingSession ? 'حفظ التعديلات' : 'إنشاء'}</Button>
+            <Button onClick={handleSessionModalSave} loading={saving} disabled={!sessionForm.name || sessionIndicatorIds.size === 0}>
+              {editingSession ? 'حفظ التعديلات' : 'إنشاء'}
+            </Button>
           </div>
         </div>
       </Modal>

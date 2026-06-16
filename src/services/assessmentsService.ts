@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { type AssessmentSession, type AssessmentResult } from '../types'
+import { type AssessmentSession, type AssessmentResult, type SessionIndicator } from '../types'
 
 export const assessmentsService = {
   async getSessions(programId: string): Promise<AssessmentSession[]> {
@@ -51,9 +51,9 @@ export const assessmentsService = {
   async getPlayerResults(playerId: string, programId: string): Promise<AssessmentResult[]> {
     const { data, error } = await supabase
       .from('assessment_results')
-      .select('*, indicator:indicators(*, category:indicator_categories(*)), session:assessment_sessions(*)')
+      .select('*, indicator:indicators(*, category:indicator_categories(*)), session:assessment_sessions!inner(*)')
       .eq('player_id', playerId)
-      .eq('assessment_sessions.program_id', programId)
+      .eq('session.program_id', programId)
     if (error) throw error
     return data || []
   },
@@ -82,5 +82,34 @@ export const assessmentsService = {
   async deleteResult(id: string): Promise<void> {
     const { error } = await supabase.from('assessment_results').delete().eq('id', id)
     if (error) throw error
+  },
+
+  async getSessionIndicators(sessionId: string): Promise<SessionIndicator[]> {
+    const { data, error } = await supabase
+      .from('session_indicators')
+      .select('*, indicator:indicators(*, category:indicator_categories(*))')
+      .eq('session_id', sessionId)
+      .order('created_at')
+    if (error) throw error
+    return data || []
+  },
+
+  async setSessionIndicators(sessionId: string, indicatorIds: string[]): Promise<void> {
+    await supabase.from('session_indicators').delete().eq('session_id', sessionId)
+    if (indicatorIds.length === 0) return
+    const rows = indicatorIds.map(indicator_id => ({ session_id: sessionId, indicator_id }))
+    const { error } = await supabase.from('session_indicators').insert(rows)
+    if (error) throw error
+  },
+
+  async getPlayerSessionCount(playerId: string, programId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('assessment_results')
+      .select('session_id, assessment_sessions!inner(program_id)')
+      .eq('player_id', playerId)
+      .eq('assessment_sessions.program_id', programId)
+    if (error) return 0
+    const uniqueSessions = new Set((data || []).map((r: { session_id: string }) => r.session_id))
+    return uniqueSessions.size
   },
 }

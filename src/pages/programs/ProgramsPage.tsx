@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AppLayout } from '../../components/layouts/AppLayout'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { Select } from '../../components/ui/Select'
 import { Modal } from '../../components/ui/Modal'
 import { ConfirmModal } from '../../components/ui/ConfirmModal'
 import { Card } from '../../components/ui/Card'
@@ -10,13 +11,27 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner'
 import { Badge } from '../../components/ui/Badge'
 import { programsService } from '../../services/programsService'
 import { playersService } from '../../services/playersService'
-import { type Program, type ProgramGroup, type Player, type ProgramPlayer } from '../../types'
-import { Plus, Edit, Trash2, Users, FolderOpen, ChevronDown, ChevronUp, UserPlus, X } from 'lucide-react'
+import { indicatorsService } from '../../services/indicatorsService'
+import { categoriesService } from '../../services/categoriesService'
+import {
+  type Program, type ProgramGroup, type Player, type ProgramPlayer,
+  type Indicator, type IndicatorCategory, type IndicatorType, type IndicatorDirection,
+} from '../../types'
+import { Plus, Edit, Trash2, Users, FolderOpen, ChevronDown, ChevronUp, UserPlus, X, BarChart3, Target, Download } from 'lucide-react'
 
 const emptyProgram = { name: '', description: '', season: '', start_date: '', end_date: '', is_active: true }
 const emptyGroup = { name: '', description: '' }
+const emptyIndicator = {
+  name: '', name_ar: '', category_id: '', type: 'numeric' as IndicatorType,
+  direction: 'higher_better' as IndicatorDirection, unit: '', min_value: '',
+  max_value: '', target_value: '', description: '', choices: '', is_active: true, sort_order: 0,
+}
 
-type ExpandedTab = 'groups' | 'players'
+type ExpandedTab = 'groups' | 'players' | 'indicators'
+
+const TYPE_LABELS: Record<IndicatorType, string> = {
+  numeric: 'رقمي', rating: 'تقييم (1-10)', text: 'نصي', choice: 'خيارات',
+}
 
 export function ProgramsPage() {
   const [programs, setPrograms] = useState<Program[]>([])
@@ -36,14 +51,32 @@ export function ProgramsPage() {
   const [expandedTab, setExpandedTab] = useState<Record<string, ExpandedTab>>({})
   const [saving, setSaving] = useState(false)
 
+  // Indicator state per program
+  const [programIndicators, setProgramIndicators] = useState<Record<string, Indicator[]>>({})
+  const [categories, setCategories] = useState<IndicatorCategory[]>([])
+  const [indicatorModalOpen, setIndicatorModalOpen] = useState(false)
+  const [editingIndicator, setEditingIndicator] = useState<Indicator | null>(null)
+  const [indicatorForm, setIndicatorForm] = useState(emptyIndicator)
+  const [indicatorProgramId, setIndicatorProgramId] = useState<string>('')
+
+  // Import from library
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importProgramId, setImportProgramId] = useState<string>('')
+  const [globalIndicators, setGlobalIndicators] = useState<Indicator[]>([])
+  const [importSelected, setImportSelected] = useState<Set<string>>(new Set())
+  const [importing, setImporting] = useState(false)
+
   // Confirmations
   const [confirmDeleteProgram, setConfirmDeleteProgram] = useState<{ open: boolean; program: Program | null }>({ open: false, program: null })
   const [confirmSaveProgram, setConfirmSaveProgram] = useState(false)
   const [confirmDeleteGroup, setConfirmDeleteGroup] = useState<{ open: boolean; groupId: string; programId: string; name: string } | null>(null)
   const [confirmSaveGroup, setConfirmSaveGroup] = useState(false)
   const [confirmRemovePlayer, setConfirmRemovePlayer] = useState<{ open: boolean; ppId: string; programId: string; name: string } | null>(null)
+  const [confirmDeleteIndicator, setConfirmDeleteIndicator] = useState<{ open: boolean; indicator: Indicator | null }>({ open: false, indicator: null })
+  const [confirmSaveIndicator, setConfirmSaveIndicator] = useState(false)
 
   useEffect(() => { loadPrograms() }, [])
+  useEffect(() => { categoriesService.getCategories().then(setCategories).catch(() => {}) }, [])
 
   const loadPrograms = async () => {
     setLoading(true)
@@ -60,6 +93,11 @@ export function ProgramsPage() {
   const loadProgramPlayers = async (programId: string) => {
     const data = await playersService.getProgramPlayers(programId).catch(() => [])
     setProgramPlayers(prev => ({ ...prev, [programId]: data }))
+  }
+
+  const loadProgramIndicators = async (programId: string) => {
+    const data = await indicatorsService.getIndicators(programId).catch(() => [])
+    setProgramIndicators(prev => ({ ...prev, [programId]: data }))
   }
 
   const toggleExpand = async (programId: string) => {
@@ -79,6 +117,7 @@ export function ProgramsPage() {
     setExpandedTab(prev => ({ ...prev, [programId]: tab }))
     if (tab === 'groups' && !groups[programId]) await loadGroups(programId)
     if (tab === 'players') await loadProgramPlayers(programId)
+    if (tab === 'indicators') await loadProgramIndicators(programId)
   }
 
   const openCreate = () => { setEditingProgram(null); setForm(emptyProgram); setModalOpen(true) }
@@ -202,6 +241,119 @@ export function ProgramsPage() {
     setConfirmRemovePlayer(null)
   }
 
+  // ── Indicator CRUD ──────────────────────────────────────────────────────────
+  const openIndicatorCreate = (programId: string) => {
+    setIndicatorProgramId(programId)
+    setEditingIndicator(null)
+    setIndicatorForm(emptyIndicator)
+    setIndicatorModalOpen(true)
+  }
+
+  const openIndicatorEdit = (programId: string, ind: Indicator) => {
+    setIndicatorProgramId(programId)
+    setEditingIndicator(ind)
+    setIndicatorForm({
+      name: ind.name, name_ar: ind.name_ar || '', category_id: ind.category_id || '',
+      type: ind.type, direction: ind.direction, unit: ind.unit || '',
+      min_value: String(ind.min_value ?? ''), max_value: String(ind.max_value ?? ''),
+      target_value: String(ind.target_value ?? ''), description: ind.description || '',
+      choices: (ind.choices || []).join(', '), is_active: ind.is_active, sort_order: ind.sort_order,
+    })
+    setIndicatorModalOpen(true)
+  }
+
+  const handleIndicatorSave = () => { setConfirmSaveIndicator(true) }
+
+  const doSaveIndicator = async () => {
+    setSaving(true)
+    setConfirmSaveIndicator(false)
+    try {
+      const data = {
+        ...indicatorForm,
+        program_id: indicatorProgramId,
+        min_value: indicatorForm.min_value ? parseFloat(indicatorForm.min_value) : undefined,
+        max_value: indicatorForm.max_value ? parseFloat(indicatorForm.max_value) : undefined,
+        target_value: indicatorForm.target_value ? parseFloat(indicatorForm.target_value) : undefined,
+        choices: indicatorForm.choices ? indicatorForm.choices.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+        category_id: indicatorForm.category_id || undefined,
+      }
+      if (editingIndicator) {
+        await indicatorsService.updateIndicator(editingIndicator.id, data)
+      } else {
+        await indicatorsService.createIndicator(data as Omit<Indicator, 'id' | 'user_id' | 'created_at' | 'category'>)
+      }
+      setIndicatorModalOpen(false)
+      await loadProgramIndicators(indicatorProgramId)
+    } catch (e) { console.error(e) }
+    setSaving(false)
+  }
+
+  const handleIndicatorDelete = (ind: Indicator) => {
+    setConfirmDeleteIndicator({ open: true, indicator: ind })
+  }
+
+  const doDeleteIndicator = async () => {
+    if (!confirmDeleteIndicator.indicator) return
+    setSaving(true)
+    try {
+      await indicatorsService.deleteIndicator(confirmDeleteIndicator.indicator.id)
+      await loadProgramIndicators(indicatorProgramId)
+    } catch (e) { console.error(e) }
+    setSaving(false)
+    setConfirmDeleteIndicator({ open: false, indicator: null })
+  }
+
+  // ── Import from library ─────────────────────────────────────────────────────
+  const openImportModal = async (programId: string) => {
+    setImportProgramId(programId)
+    setImportSelected(new Set())
+    const globals = await indicatorsService.getGlobalIndicators().catch(() => [])
+    // Exclude indicators already in this program
+    const existing = programIndicators[programId] || []
+    const existingNames = new Set(existing.map(i => (i.name_ar || i.name).trim().toLowerCase()))
+    setGlobalIndicators(globals.filter(g => !existingNames.has((g.name_ar || g.name).trim().toLowerCase())))
+    setImportModalOpen(true)
+  }
+
+  const toggleImportSelect = (id: string) => {
+    setImportSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const doImport = async () => {
+    if (importSelected.size === 0) return
+    setImporting(true)
+    try {
+      for (const id of importSelected) {
+        const src = globalIndicators.find(i => i.id === id)
+        if (!src) continue
+        await indicatorsService.createIndicator({
+          name: src.name,
+          name_ar: src.name_ar,
+          program_id: importProgramId,
+          category_id: src.category_id,
+          type: src.type,
+          direction: src.direction,
+          unit: src.unit,
+          min_value: src.min_value,
+          max_value: src.max_value,
+          target_value: src.target_value,
+          choices: src.choices,
+          description: src.description,
+          is_active: src.is_active,
+          sort_order: src.sort_order,
+        } as Omit<Indicator, 'id' | 'user_id' | 'created_at' | 'category'>)
+      }
+      await loadProgramIndicators(importProgramId)
+      setImportModalOpen(false)
+    } catch (e) { console.error(e) }
+    setImporting(false)
+  }
+
   return (
     <AppLayout title="البرامج">
       <div className="space-y-4">
@@ -287,6 +439,22 @@ export function ProgramsPage() {
                         <FolderOpen className="w-4 h-4" />
                         المجموعات
                       </button>
+                      <button
+                        onClick={() => switchTab(program.id, 'indicators')}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                          expandedTab[program.id] === 'indicators'
+                            ? 'border-[#0f2040] text-[#0f2040]'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        المؤشرات
+                        {programIndicators[program.id] && (
+                          <span className="bg-[#0f2040] text-white text-xs rounded-full px-1.5 py-0.5">
+                            {programIndicators[program.id].length}
+                          </span>
+                        )}
+                      </button>
                     </div>
 
                     <div className="p-4">
@@ -369,6 +537,65 @@ export function ProgramsPage() {
                           )}
                         </div>
                       )}
+
+                      {/* Indicators tab */}
+                      {expandedTab[program.id] === 'indicators' && (
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="text-sm font-semibold text-gray-700">مؤشرات التقييم</h4>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openImportModal(program.id)}>
+                                <Download className="w-3 h-3" /> استيراد من المكتبة
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={() => openIndicatorCreate(program.id)}>
+                                <Plus className="w-3 h-3" /> مؤشر جديد
+                              </Button>
+                            </div>
+                          </div>
+                          {!programIndicators[program.id] ? (
+                            <p className="text-sm text-gray-400 text-center py-4">جار التحميل...</p>
+                          ) : programIndicators[program.id].length === 0 ? (
+                            <div className="text-center py-6">
+                              <BarChart3 className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                              <p className="text-sm text-gray-400 mb-3">لا توجد مؤشرات لهذا البرنامج بعد</p>
+                              <Button variant="outline" size="sm" onClick={() => openIndicatorCreate(program.id)}>
+                                <Plus className="w-3 h-3" /> إضافة مؤشر الآن
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {programIndicators[program.id].map(ind => (
+                                <div key={ind.id} className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-gray-100">
+                                  <div className="flex items-center gap-2.5">
+                                    <Target className="w-4 h-4 text-gray-400 shrink-0" />
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-800">{ind.name_ar || ind.name}</p>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <Badge variant="info">{TYPE_LABELS[ind.type]}</Badge>
+                                        {ind.unit && <span className="text-xs text-gray-400">{ind.unit}</span>}
+                                        {ind.category && (
+                                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ind.category.color || '#6b7280' }} />
+                                            {ind.category.name_ar || ind.category.name}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button variant="ghost" size="sm" onClick={() => openIndicatorEdit(program.id, ind)}>
+                                      <Edit className="w-3 h-3" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => { setIndicatorProgramId(program.id); handleIndicatorDelete(ind) }}>
+                                      <Trash2 className="w-3 h-3 text-red-400" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -415,6 +642,43 @@ export function ProgramsPage() {
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={() => setGroupModalOpen(false)}>إلغاء</Button>
             <Button onClick={handleGroupSave} loading={saving} disabled={!groupForm.name}>حفظ</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Indicator Modal */}
+      <Modal open={indicatorModalOpen} onClose={() => setIndicatorModalOpen(false)} title={editingIndicator ? 'تعديل المؤشر' : 'مؤشر جديد'} size="lg">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="الاسم (عربي) *" value={indicatorForm.name_ar} onChange={e => setIndicatorForm(f => ({ ...f, name_ar: e.target.value }))} placeholder="مثال: السرعة" />
+            <Input label="الاسم (إنجليزي)" value={indicatorForm.name} onChange={e => setIndicatorForm(f => ({ ...f, name: e.target.value }))} placeholder="Speed" />
+          </div>
+          <Select label="القسم" value={indicatorForm.category_id} onChange={e => setIndicatorForm(f => ({ ...f, category_id: e.target.value }))}>
+            <option value="">بدون قسم</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name_ar || c.name}</option>)}
+          </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="نوع المؤشر" value={indicatorForm.type} onChange={e => setIndicatorForm(f => ({ ...f, type: e.target.value as IndicatorType }))}>
+              <option value="numeric">رقمي</option>
+              <option value="rating">تقييم (1-10)</option>
+              <option value="text">نصي</option>
+              <option value="choice">خيارات</option>
+            </Select>
+            <Select label="الاتجاه" value={indicatorForm.direction} onChange={e => setIndicatorForm(f => ({ ...f, direction: e.target.value as IndicatorDirection }))}>
+              <option value="higher_better">الأعلى أفضل</option>
+              <option value="lower_better">الأقل أفضل</option>
+              <option value="neutral">محايد</option>
+            </Select>
+          </div>
+          {indicatorForm.type === 'choice' && (
+            <Input label="الخيارات (مفصولة بفاصلة)" value={indicatorForm.choices} onChange={e => setIndicatorForm(f => ({ ...f, choices: e.target.value }))} placeholder="ضعيف, متوسط, جيد, ممتاز" />
+          )}
+          <Input label="الوحدة" value={indicatorForm.unit} onChange={e => setIndicatorForm(f => ({ ...f, unit: e.target.value }))} placeholder="ثانية، متر، كجم..." />
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setIndicatorModalOpen(false)}>إلغاء</Button>
+            <Button onClick={handleIndicatorSave} loading={saving} disabled={!indicatorForm.name_ar && !indicatorForm.name}>
+              {editingIndicator ? 'حفظ التعديلات' : 'إضافة'}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -532,6 +796,93 @@ export function ProgramsPage() {
         variant="danger"
         loading={saving}
       />
+
+      {/* Confirm: delete indicator */}
+      <ConfirmModal
+        open={confirmDeleteIndicator.open}
+        onClose={() => setConfirmDeleteIndicator({ open: false, indicator: null })}
+        onConfirm={doDeleteIndicator}
+        title="حذف المؤشر"
+        message={`هل أنت متأكد من حذف مؤشر "${confirmDeleteIndicator.indicator?.name_ar || confirmDeleteIndicator.indicator?.name}"؟ لا يمكن التراجع.`}
+        confirmLabel="حذف"
+        variant="danger"
+        loading={saving}
+      />
+
+      {/* Confirm: save indicator */}
+      <ConfirmModal
+        open={confirmSaveIndicator}
+        onClose={() => setConfirmSaveIndicator(false)}
+        onConfirm={doSaveIndicator}
+        title={editingIndicator ? 'تأكيد تعديل المؤشر' : 'تأكيد إضافة المؤشر'}
+        message={editingIndicator
+          ? `هل أنت متأكد من حفظ التغييرات على "${editingIndicator.name_ar || editingIndicator.name}"؟`
+          : `هل أنت متأكد من إضافة مؤشر "${indicatorForm.name_ar || indicatorForm.name}"؟`
+        }
+        confirmLabel={editingIndicator ? 'حفظ التعديلات' : 'إضافة'}
+        variant="warning"
+        loading={saving}
+      />
+
+      {/* Import from library modal */}
+      <Modal open={importModalOpen} onClose={() => setImportModalOpen(false)} title="استيراد مؤشرات من المكتبة" size="lg">
+        <div className="space-y-3">
+          {globalIndicators.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <BarChart3 className="w-10 h-10 mx-auto mb-2 text-gray-200" />
+              <p className="text-sm">لا توجد مؤشرات في المكتبة أو جميعها مضافة بالفعل</p>
+              <p className="text-xs text-gray-300 mt-1">أضف مؤشرات من صفحة المؤشرات أولاً</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">اختر المؤشرات التي تريد إضافتها إلى البرنامج</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setImportSelected(new Set(globalIndicators.map(i => i.id)))} className="text-xs text-[#0f2040] hover:underline">تحديد الكل</button>
+                  <span className="text-gray-300">|</span>
+                  <button type="button" onClick={() => setImportSelected(new Set())} className="text-xs text-gray-400 hover:underline">إلغاء الكل</button>
+                </div>
+              </div>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {globalIndicators.map(ind => (
+                  <label key={ind.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={importSelected.has(ind.id)}
+                      onChange={() => toggleImportSelect(ind.id)}
+                      className="rounded text-[#0f2040]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800">{ind.name_ar || ind.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-gray-400">{ind.type === 'numeric' ? 'رقمي' : ind.type === 'rating' ? 'تقييم' : ind.type === 'text' ? 'نصي' : 'خيارات'}</span>
+                        {ind.unit && <span className="text-xs text-gray-400">· {ind.unit}</span>}
+                      </div>
+                    </div>
+                    {ind.category && (
+                      <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ind.category.color || '#6b7280' }} />
+                        {ind.category.name_ar || ind.category.name}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {importSelected.size > 0 && (
+                <p className="text-xs text-[#0f2040]">تم تحديد {importSelected.size} مؤشر</p>
+              )}
+            </>
+          )}
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => setImportModalOpen(false)}>إلغاء</Button>
+            {globalIndicators.length > 0 && (
+              <Button onClick={doImport} loading={importing} disabled={importSelected.size === 0}>
+                <Download className="w-3 h-3" /> استيراد ({importSelected.size})
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </AppLayout>
   )
 }

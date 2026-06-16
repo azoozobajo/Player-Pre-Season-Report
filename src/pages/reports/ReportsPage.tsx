@@ -238,7 +238,7 @@ export function ReportsPage() {
     if (!playerId || !selProgramId) return
     setLoadingR(true)
     try {
-      const [sessions, allIndicators, rawCategories, attRaw, notes, recs, prog, player, s, bodyRecs] = await Promise.all([
+      const [sessions, allIndicators, rawCategories, attRaw, notes, recs, prog, player, s, bodyRecs, playerResults] = await Promise.all([
         assessmentsService.getSessions(selProgramId).catch(() => []),
         indicatorsService.getIndicators(selProgramId).catch(() => []),
         categoriesService.getCategories().catch(() => []),
@@ -249,6 +249,7 @@ export function ReportsPage() {
         playersService.getPlayer(playerId).catch(() => null),
         settingsService.getSettings().catch(() => null),
         bodyCompositionService.getRecords(playerId, selProgramId).catch(() => []),
+        assessmentsService.getPlayerResults(playerId, selProgramId).catch(() => []),
       ])
 
       if (!player || !prog) { setLoadingR(false); return }
@@ -263,7 +264,11 @@ export function ReportsPage() {
       const genRecs   = eMap[CAT_RECS_GEN]?.content || ''
       const coachNotes = notes.filter(n => !n.category || ![CAT_TARGETS,CAT_POSITIVES,CAT_NEGATIVES,CAT_RECS_GEN].includes(n.category))
 
-      const sorted = [...sessions].sort((a,b) => a.session_date.localeCompare(b.session_date))
+      // Only count sessions where the player has at least one result
+      const playerSessionIds = new Set(playerResults.map((r: { session_id: string }) => r.session_id))
+      const sorted = [...sessions]
+        .sort((a,b) => a.session_date.localeCompare(b.session_date))
+        .filter(s => playerSessionIds.has(s.id))
 
       let firstMap = new Map<string, number|null>()
       let lastMap  = new Map<string, number|null>()
