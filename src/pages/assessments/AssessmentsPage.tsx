@@ -412,7 +412,7 @@ export function AssessmentsPage() {
                     <p className="text-xs text-gray-300 mt-1">عدّل الجلسة لإضافة المؤشرات</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 max-h-[420px] overflow-y-auto pl-1">
+                  <div className="space-y-4 pl-1">
                     {sessionIndicators.map(indicator => (
                       <div key={indicator.id} className="border border-gray-100 rounded-lg p-2.5 bg-gray-50/50">
                         <label className="text-xs font-semibold text-gray-700 block mb-1.5">
