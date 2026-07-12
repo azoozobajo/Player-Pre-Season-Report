@@ -657,41 +657,74 @@ ${indReportRef.current.innerHTML}
                   const age    = calcAge(data.player.date_of_birth)
 
                   function fv(v?: number, d = 1) { return v !== undefined && v !== null ? v.toFixed(d) : '—' }
-                  function metricBox(label: string, value?: number, unit = '', _mn?: number, _mx?: number) {
-                    return `
-                      <div style="background:#f8f8f8;border:1px solid #eee;border-radius:8px;padding:7px 9px">
-                        <p style="font-size:8px;color:#aaa;margin:0 0 2px">${label}</p>
-                        <div style="display:flex;align-items:baseline;gap:3px">
-                          <span style="font-size:16px;font-weight:700;color:#1a1a1a">${fv(value)}</span>
-                          <span style="font-size:9px;color:#aaa">${unit}</span>
-                        </div>
-                      </div>`
-                  }
-
                   const getMetricValue = (record: BodyCompositionRecord | undefined, key: string) => {
                     if (!record) return undefined
                     return (record as unknown as Record<string, number | undefined>)[key]
                   }
 
-                  const compareMetrics = [
-                    { key: 'weight_kg', label: 'الوزن', unit: 'كجم' },
-                    { key: 'body_fat_percentage', label: 'نسبة الدهون', unit: '%' },
-                    { key: 'muscle_mass_kg', label: 'الكتلة العضلية', unit: 'كجم' },
-                    { key: 'fat_free_mass_kg', label: 'الكتلة الخالية', unit: 'كجم' },
-                    { key: 'body_fat_mass_kg', label: 'كتلة الدهون', unit: 'كجم' },
-                    { key: 'soft_lean_mass_kg', label: 'الكتلة الهزيلة', unit: 'كجم' },
-                    { key: 'total_body_water_kg', label: 'الماء الكلي', unit: 'كجم' },
-                    { key: 'protein_kg', label: 'البروتين', unit: 'كجم' },
-                    { key: 'mineral_kg', label: 'المعادن', unit: 'كجم' },
-                    { key: 'visceral_fat_index', label: 'الدهون الحشوية', unit: '' },
-                    { key: 'waist_cm', label: 'محيط الخصر', unit: 'سم' },
-                    { key: 'chest_cm', label: 'محيط الصدر', unit: 'سم' },
-                    { key: 'hip_cm', label: 'محيط الورك', unit: 'سم' },
-                    { key: 'left_upper_arm_cm', label: 'عضد يسرى', unit: 'سم' },
-                    { key: 'right_upper_arm_cm', label: 'عضد يمنى', unit: 'سم' },
-                  ]
-
                   const singleMeasurement = data.bodyRecs.length <= 1 || first.id === latest.id
+
+                  const comparisonSections = [
+                    {
+                      title: 'الأساسيات',
+                      rows: [
+                        { key: 'weight_kg', label: 'الوزن', unit: 'كجم' },
+                        { key: 'height_cm', label: 'الطول', unit: 'سم' },
+                        { key: 'bmi', label: 'BMI', unit: '' },
+                        { key: 'ffmi', label: 'FFMI', unit: '' },
+                      ],
+                    },
+                    {
+                      title: 'تركيبة الجسم',
+                      rows: [
+                        { key: 'fat_free_mass_kg', label: 'الكتلة الخالية من الدهون', unit: 'كجم' },
+                        { key: 'body_fat_percentage', label: 'نسبة الدهون', unit: '%' },
+                        { key: 'muscle_mass_kg', label: 'الكتلة العضلية', unit: 'كجم' },
+                        { key: 'body_fat_mass_kg', label: 'كتلة الدهون', unit: 'كجم' },
+                        { key: 'soft_lean_mass_kg', label: 'الكتلة الهزيلة', unit: 'كجم' },
+                        { key: 'visceral_fat_index', label: 'الدهون الحشوية', unit: '' },
+                      ],
+                    },
+                    {
+                      title: 'المؤشرات البيولوجية',
+                      rows: [
+                        { key: 'total_body_water_kg', label: 'الماء الكلي', unit: 'كجم' },
+                        { key: 'protein_kg', label: 'البروتين', unit: 'كجم' },
+                        { key: 'mineral_kg', label: 'المعادن', unit: 'كجم' },
+                        { key: 'bmr_kcal', label: 'معدل الأيض', unit: 'kcal' },
+                        { key: 'tee_kcal', label: 'TEE', unit: 'kcal' },
+                      ],
+                    },
+                    {
+                      title: 'المحيطات',
+                      rows: [
+                        { key: 'waist_cm', label: 'محيط الخصر', unit: 'سم' },
+                        { key: 'chest_cm', label: 'محيط الصدر', unit: 'سم' },
+                        { key: 'hip_cm', label: 'محيط الورك', unit: 'سم' },
+                        { key: 'left_upper_arm_cm', label: 'عضد يسرى', unit: 'سم' },
+                        { key: 'right_upper_arm_cm', label: 'عضد يمنى', unit: 'سم' },
+                        { key: 'shoulder_width_cm', label: 'الكتفين', unit: 'سم' },
+                        { key: 'left_thigh_cm', label: 'فخذ يسرى', unit: 'سم' },
+                        { key: 'right_thigh_cm', label: 'فخذ يمنى', unit: 'سم' },
+                        { key: 'waist_hip_ratio', label: 'خصر/ورك', unit: '' },
+                      ],
+                    },
+                    {
+                      title: 'تحليل الأجزاء',
+                      rows: [
+                        { key: 'left_arm_lean_kg', label: 'ذراع يسرى - كتلة هزيلة', unit: 'كجم' },
+                        { key: 'left_arm_fat_kg', label: 'ذراع يسرى - دهون', unit: 'كجم' },
+                        { key: 'right_arm_lean_kg', label: 'ذراع يمنى - كتلة هزيلة', unit: 'كجم' },
+                        { key: 'right_arm_fat_kg', label: 'ذراع يمنى - دهون', unit: 'كجم' },
+                        { key: 'trunk_lean_kg', label: 'الجذع - كتلة هزيلة', unit: 'كجم' },
+                        { key: 'trunk_fat_kg', label: 'الجذع - دهون', unit: 'كجم' },
+                        { key: 'left_leg_lean_kg', label: 'ساق يسرى - كتلة هزيلة', unit: 'كجم' },
+                        { key: 'left_leg_fat_kg', label: 'ساق يسرى - دهون', unit: 'كجم' },
+                        { key: 'right_leg_lean_kg', label: 'ساق يمنى - كتلة هزيلة', unit: 'كجم' },
+                        { key: 'right_leg_fat_kg', label: 'ساق يمنى - دهون', unit: 'كجم' },
+                      ],
+                    },
+                  ]
 
                   const compareRow = (label: string, fVal?: number, lVal?: number, unit = '', firstDate?: string, lastDate?: string) => {
                     if (fVal === undefined && lVal === undefined) return ''
@@ -704,19 +737,19 @@ ${indReportRef.current.innerHTML}
                       if (diff > 0) changeHtml = `<span style="font-size:10px;font-weight:700;color:#00a86b">▲ زيادة ${Math.abs(diff).toFixed(diff % 1 === 0 ? 0 : 1)}${unit}</span>`
                       else if (diff < 0) changeHtml = `<span style="font-size:10px;font-weight:700;color:#e74c3c">▼ نقصان ${Math.abs(diff).toFixed(diff % 1 === 0 ? 0 : 1)}${unit}</span>`
                       else changeHtml = '<span style="font-size:9px;color:#888">ثبات</span>'
-                    } else if (singleMeasurement) {
-                      changeHtml = '<span style="font-size:9px;color:#888">—</span>'
+                    } else if (singleMeasurement && hasAfter) {
+                      changeHtml = '<span style="font-size:9px;color:#888">قياس واحد</span>'
                     }
 
                     return `<tr style="border-bottom:1px solid #f0f0f0">
                       <td style="padding:5px 8px;font-size:10px;color:#333">${label}</td>
                       <td style="padding:5px 8px;font-size:10px;color:#555">
-                        <div style="font-weight:600">${hasBefore ? `${fv(fVal)} ${unit}` : '—'}</div>
+                        <div style="font-weight:600">${hasBefore ? `${fv(fVal)}${unit ? ' ' + unit : ''}` : '—'}</div>
                         <div style="font-size:8px;color:#aaa;margin-top:1px">${firstDate || '—'}</div>
                       </td>
                       <td style="padding:5px 8px;font-size:10px;color:#0a1628">
-                        <div style="font-weight:700">${singleMeasurement ? '—' : hasAfter ? `${fv(lVal)} ${unit}` : '—'}</div>
-                        <div style="font-size:8px;color:#aaa;margin-top:1px">${singleMeasurement ? '—' : lastDate || '—'}</div>
+                        <div style="font-weight:700">${hasAfter ? `${fv(lVal)}${unit ? ' ' + unit : ''}` : '—'}</div>
+                        <div style="font-size:8px;color:#aaa;margin-top:1px">${lastDate || '—'}</div>
                       </td>
                       <td style="padding:5px 8px;font-size:10px;font-weight:700;text-align:center">${changeHtml}</td>
                     </tr>`
@@ -737,117 +770,33 @@ ${indReportRef.current.innerHTML}
                         </div>
                       </div>
 
-                      {/* Basic metrics */}
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}
-                        dangerouslySetInnerHTML={{ __html: [
-                          metricBox('الوزن', latest.weight_kg, 'كجم'),
-                          metricBox('الطول', latest.height_cm, 'سم'),
-                          metricBox('BMI',   latest.bmi),
-                          metricBox('FFMI',  latest.ffmi),
-                        ].join('') }}
-                      />
-
-                      {/* Body composition */}
-                      <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>تركيبة الجسم</p>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:14 }}
-                        dangerouslySetInnerHTML={{ __html: [
-                          metricBox('الكتلة الخالية من الدهون', latest.fat_free_mass_kg, 'كجم', latest.fat_free_mass_min, latest.fat_free_mass_max),
-                          metricBox('نسبة الدهون', latest.body_fat_percentage, '%', latest.body_fat_percentage_min, latest.body_fat_percentage_max),
-                          metricBox('الكتلة العضلية الهيكلية', latest.muscle_mass_kg, 'كجم', latest.muscle_mass_min, latest.muscle_mass_max),
-                          metricBox('كتلة الدهون', latest.body_fat_mass_kg, 'كجم', latest.body_fat_mass_min, latest.body_fat_mass_max),
-                          metricBox('الكتلة الهزيلة الناعمة', latest.soft_lean_mass_kg, 'كجم', latest.soft_lean_mass_min, latest.soft_lean_mass_max),
-                          metricBox('الدهون الحشوية', latest.visceral_fat_index, '', latest.visceral_fat_min, latest.visceral_fat_max),
-                        ].join('') }}
-                      />
-
-                      {/* Biological */}
-                      <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>المؤشرات البيولوجية</p>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}
-                        dangerouslySetInnerHTML={{ __html: [
-                          metricBox('الماء الكلي', latest.total_body_water_kg, 'كجم', latest.total_body_water_min, latest.total_body_water_max),
-                          metricBox('البروتين', latest.protein_kg, 'كجم', latest.protein_min, latest.protein_max),
-                          metricBox('المعادن', latest.mineral_kg, 'كجم', latest.mineral_min, latest.mineral_max),
-                          metricBox('معدل الأيض', latest.bmr_kcal, 'kcal'),
-                        ].join('') }}
-                      />
-
-                      {/* Segment Analysis */}
-                      {(latest.left_arm_lean_kg || latest.trunk_lean_kg || latest.left_leg_lean_kg) && (
-                        <div style={{ marginBottom:14 }}>
-                          <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>تحليل الأجزاء</p>
-                          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
-                            <thead>
-                              <tr style={{ background:'#f0f4f8' }}>
-                                <th style={{ padding:'5px 8px', textAlign:'right', fontSize:9, color:'#888' }}>الجزء</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#0a1628' }}>كتلة هزيلة</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#d4af37' }}>دهون</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {[
-                                { name:'ذراع يسرى', lv:latest.left_arm_lean_kg, fv_:latest.left_arm_fat_kg },
-                                { name:'ذراع يمنى', lv:latest.right_arm_lean_kg, fv_:latest.right_arm_fat_kg },
-                                { name:'الجذع', lv:latest.trunk_lean_kg, fv_:latest.trunk_fat_kg },
-                                { name:'ساق يسرى', lv:latest.left_leg_lean_kg, fv_:latest.left_leg_fat_kg },
-                                { name:'ساق يمنى', lv:latest.right_leg_lean_kg, fv_:latest.right_leg_fat_kg },
-                              ].map((seg, i) => (
-                                <tr key={seg.name} style={{ borderBottom:'1px solid #f0f0f0', background: i%2===0 ? '#fff':'#fafcff' }}>
-                                  <td style={{ padding:'5px 8px', fontWeight:600, color:'#333' }}>{seg.name}</td>
-                                  <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#0a1628' }}>{fv(seg.lv)}</td>
-                                  <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#c09020' }}>{fv(seg.fv_)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                          <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:0, letterSpacing:1 }}>مقارنة قبل ← بعد</p>
+                          <span style={{ fontSize:8, color:'#888', background:'#f5f7fb', borderRadius:999, padding:'2px 6px' }}>
+                            {singleMeasurement ? 'قياس واحد' : 'أول قياس ← آخر قياس'}
+                          </span>
                         </div>
-                      )}
-
-                      {/* Girth + First vs Last */}
-                      <div style={{ display:'grid', gridTemplateColumns: data.bodyRecs.length >= 2 ? '1fr 1fr' : '1fr', gap:14 }}>
-                        {/* Girth */}
-                        {(latest.waist_cm || latest.chest_cm || latest.left_upper_arm_cm) && (
-                          <div>
-                            <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>المحيطات (سم)</p>
-                            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5 }}>
-                              {[
-                                ['عضد يسرى', latest.left_upper_arm_cm], ['عضد يمنى', latest.right_upper_arm_cm],
-                                ['الكتفين',   latest.shoulder_width_cm], ['الصدر',    latest.chest_cm],
-                                ['الخصر',     latest.waist_cm],          ['الورك',     latest.hip_cm],
-                                ['فخذ يسرى',  latest.left_thigh_cm],    ['فخذ يمنى',  latest.right_thigh_cm],
-                              ].filter(([, v]) => v !== undefined && v !== null).map(([lbl, val]) => (
-                                <div key={String(lbl)} style={{ background:'#f8f8f8', borderRadius:6, padding:'5px 7px' }}>
-                                  <p style={{ fontSize:8, color:'#aaa', margin:'0 0 1px' }}>{lbl}</p>
-                                  <p style={{ fontSize:13, fontWeight:700, color:'#1a1a1a', margin:0 }}>{fv(val as number|undefined, 0)}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Before vs After comparison */}
-                        {data.bodyRecs.length > 0 && (
-                          <div>
-                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-                              <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:0, letterSpacing:1 }}>مقارنة قبل ← بعد</p>
-                              <span style={{ fontSize:8, color:'#888', background:'#f5f7fb', borderRadius:999, padding:'2px 6px' }}>
-                                {singleMeasurement ? 'قياس واحد' : 'مقارنة أول وآخر قياس'}
-                              </span>
-                            </div>
-                            <div style={{ background:'#f8fbff', border:'1px solid #e8eef7', borderRadius:10, padding:8 }}>
-                              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
-                                <thead>
-                                  <tr style={{ background:'#eef4fb' }}>
-                                    <th style={{ padding:'4px 6px', textAlign:'right', fontSize:9, color:'#888' }}>المؤشر</th>
-                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>قبل</th>
-                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>بعد</th>
-                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>التغيير</th>
-                                  </tr>
-                                </thead>
-                                <tbody dangerouslySetInnerHTML={{ __html: compareMetrics.map(metric => compareRow(metric.label, getMetricValue(first, metric.key), getMetricValue(latest, metric.key), metric.unit, first.measurement_date, latest.measurement_date)).join('') }} />
-                              </table>
-                            </div>
-                          </div>
-                        )}
+                        <div style={{ background:'#f8fbff', border:'1px solid #e8eef7', borderRadius:10, padding:8 }}>
+                          <div dangerouslySetInnerHTML={{ __html: comparisonSections.map(section => {
+                            const rowsHtml = section.rows.map(row => compareRow(row.label, getMetricValue(first, row.key), getMetricValue(latest, row.key), row.unit, first.measurement_date, latest.measurement_date)).join('')
+                            return `
+                              <div style="margin-bottom:10px">
+                                <p style="font-size:9px;color:#0a1628;font-weight:700;margin:0 0 5px">${section.title}</p>
+                                <table style="width:100%;border-collapse:collapse;font-size:10px">
+                                  <thead>
+                                    <tr style="background:#eef4fb">
+                                      <th style="padding:4px 6px;text-align:right;font-size:9px;color:#888">المؤشر</th>
+                                      <th style="padding:4px 6px;text-align:center;font-size:9px;color:#888">قبل</th>
+                                      <th style="padding:4px 6px;text-align:center;font-size:9px;color:#888">بعد</th>
+                                      <th style="padding:4px 6px;text-align:center;font-size:9px;color:#888">التغيير</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>${rowsHtml}</tbody>
+                                </table>
+                              </div>`
+                          }).join('') }} />
+                        </div>
                       </div>
 
                       <div style={{ display:'flex', justifyContent:'space-between', marginTop:12, paddingTop:8, borderTop:'1px solid #e8e8e8' }}>
