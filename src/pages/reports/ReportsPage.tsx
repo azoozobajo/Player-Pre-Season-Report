@@ -14,7 +14,7 @@ import { notesService } from '../../services/notesService'
 import { categoriesService } from '../../services/categoriesService'
 import { bodyCompositionService } from '../../services/bodyCompositionService'
 import {
-  type Program, type Player, type Indicator, type AssessmentSession,
+  type Program, type Player, type Indicator,
   type AppSettings, type CoachNote, type Recommendation, type IndicatorCategory,
   type BodyCompositionRecord,
 } from '../../types'
@@ -261,16 +261,23 @@ export function ReportsPage() {
       let commentMap = new Map<string, string>()
 
       if (sorted.length > 0) {
-        const [fRes, lRes] = await Promise.all([
-          assessmentsService.getResults(sorted[0].id).catch(() => []),
-          assessmentsService.getResults(sorted[sorted.length-1].id).catch(() => []),
-        ])
-        for (const r of fRes.filter(r => r.player_id === playerId)) {
+        const allSessionResults = await Promise.all(
+          sorted.map(s => assessmentsService.getResults(s.id).catch(() => []))
+        )
+
+        const firstResults = allSessionResults[0] || []
+        const lastResults = allSessionResults[allSessionResults.length - 1] || []
+
+        for (const r of firstResults.filter(r => r.player_id === playerId)) {
           firstMap.set(r.indicator_id, getIndicatorValue(r))
         }
-        for (const r of lRes.filter(r => r.player_id === playerId)) {
+        for (const r of lastResults.filter(r => r.player_id === playerId)) {
           lastMap.set(r.indicator_id, getIndicatorValue(r))
-          if (r.notes) commentMap.set(r.indicator_id, r.notes)
+        }
+        for (const results of allSessionResults) {
+          for (const r of results.filter(r => r.player_id === playerId)) {
+            if (r.notes) commentMap.set(r.indicator_id, r.notes)
+          }
         }
       }
 
@@ -541,10 +548,10 @@ ${indReportRef.current.innerHTML}
                   </div>
 
                   <div style={{ background:'linear-gradient(135deg,#0f2040 0%,#163060 100%)', padding:'20px 24px', display:'flex', alignItems:'center', gap:18 }}>
-                    <div style={{ width:90, height:90, borderRadius:14, background:'#d4af37', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'3px solid rgba(212,175,55,.4)', overflow:'hidden' }}>
+                    <div style={{ width:118, height:118, borderRadius:16, background:'#d4af37', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'4px solid rgba(212,175,55,.4)', overflow:'hidden', boxShadow:'0 12px 30px rgba(0,0,0,.18)' }}>
                       {data.player.photo_url
                         ? <img src={data.player.photo_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                        : <span style={{ fontSize:36, fontWeight:700, color:'#0a1628' }}>{data.player.full_name.charAt(0)}</span>
+                        : <span style={{ fontSize:42, fontWeight:700, color:'#0a1628' }}>{data.player.full_name.charAt(0)}</span>
                       }
                     </div>
                     <div style={{ flex:1 }}>
@@ -650,56 +657,41 @@ ${indReportRef.current.innerHTML}
                   const age    = calcAge(data.player.date_of_birth)
 
                   function fv(v?: number, d = 1) { return v !== undefined && v !== null ? v.toFixed(d) : '—' }
-                  function st(v?: number, mn?: number, mx?: number) {
-                    if (!v || !mn || !mx) return { label: '', color: '#888' }
-                    if (v < mn) return { label: 'منخفض', color: '#3498db' }
-                    if (v > mx) return { label: 'مرتفع', color: '#e74c3c' }
-                    return { label: 'طبيعي', color: '#00a86b' }
-                  }
-                  function pct(v?: number, mn?: number, mx?: number) {
-                    if (!v || !mn || !mx || mx === mn) return 50
-                    return Math.min(100, Math.max(0, ((v - mn) / (mx - mn)) * 100))
-                  }
-                  function rangeBar(v?: number, mn?: number, mx?: number, unit = '') {
-                    if (!v || !mn || !mx) return ''
-                    const p = pct(v, mn, mx)
-                    const s = st(v, mn, mx)
+                  function metricBox(label: string, value?: number, unit = '', _mn?: number, _mx?: number) {
                     return `
-                      <div style="position:relative;height:5px;background:#e8e8e8;border-radius:3px;margin:3px 0">
-                        <div style="position:absolute;inset:0;margin:0 12%;background:#c3e8d6;border-radius:3px"></div>
-                        <div style="position:absolute;width:5px;height:9px;background:#333;border-radius:2px;top:-2px;left:${p}%;transform:translateX(-50%)"></div>
-                      </div>
-                      <div style="display:flex;justify-content:space-between;font-size:8px;color:#aaa"><span>${mn}${unit}</span><span style="font-weight:700;color:${s.color}">${s.label}</span><span>${mx}${unit}</span></div>
-                    `
-                  }
-                  function metricBox(label: string, value?: number, unit = '', mn?: number, mx?: number) {
-                    const s = st(value, mn, mx)
-                    const hasRange = value !== undefined && mn !== undefined && mx !== undefined
-                    return `
-                      <div style="background:${hasRange ? s.color + '12' : '#f8f8f8'};border:1px solid ${hasRange ? s.color + '40' : '#eee'};border-radius:8px;padding:7px 9px">
+                      <div style="background:#f8f8f8;border:1px solid #eee;border-radius:8px;padding:7px 9px">
                         <p style="font-size:8px;color:#aaa;margin:0 0 2px">${label}</p>
                         <div style="display:flex;align-items:baseline;gap:3px">
                           <span style="font-size:16px;font-weight:700;color:#1a1a1a">${fv(value)}</span>
                           <span style="font-size:9px;color:#aaa">${unit}</span>
-                          ${hasRange ? `<span style="font-size:9px;font-weight:700;color:${s.color};margin-right:auto">${s.label}</span>` : ''}
                         </div>
-                        ${hasRange ? rangeBar(value, mn, mx, unit) : ''}
-                        ${hasRange ? `<p style="font-size:7px;color:#ccc;margin:2px 0 0">المدى: ${mn}–${mx}${unit}</p>` : ''}
                       </div>`
                   }
 
-                  const improvRow = (label: string, fVal?: number, lVal?: number, unit = '', dir = 'higher_better') => {
-                    if (fVal === undefined || lVal === undefined) return ''
-                    const diff = lVal - fVal
-                    const impPct = fVal !== 0 ? Math.abs(diff / fVal * 100).toFixed(1) : null
-                    const positive = dir === 'lower_better' ? lVal < fVal : lVal > fVal
-                    const impLabel = diff === 0 ? '—' : impPct ? `${positive ? '▲' : '▼'} ${impPct}%` : '—'
-                    const impColor = diff === 0 ? '#aaa' : positive ? '#00a86b' : '#e74c3c'
+                  const compareRow = (label: string, fVal?: number, lVal?: number, unit = '', firstDate?: string, lastDate?: string) => {
+                    if (fVal === undefined && lVal === undefined) return ''
+                    const hasBefore = fVal !== undefined && fVal !== null
+                    const hasAfter = lVal !== undefined && lVal !== null
+                    let changeHtml = '<span style="font-size:9px;color:#888">—</span>'
+                    if (hasBefore && hasAfter) {
+                      const diff = (lVal as number) - (fVal as number)
+                      if (diff > 0) changeHtml = '<span style="font-size:10px;font-weight:700;color:#00a86b">▲ زيادة</span>'
+                      else if (diff < 0) changeHtml = '<span style="font-size:10px;font-weight:700;color:#e74c3c">▼ نقصان</span>'
+                      else changeHtml = '<span style="font-size:9px;color:#888">بدون تغيير</span>'
+                    } else if (hasBefore || hasAfter) {
+                      changeHtml = '<span style="font-size:9px;color:#888">اختبار واحد</span>'
+                    }
                     return `<tr style="border-bottom:1px solid #f0f0f0">
                       <td style="padding:5px 8px;font-size:10px;color:#333">${label}</td>
-                      <td style="padding:5px 8px;font-size:11px;font-weight:600;text-align:center;color:#555">${fv(fVal)} ${unit}</td>
-                      <td style="padding:5px 8px;font-size:11px;font-weight:700;text-align:center;color:#0a1628">${fv(lVal)} ${unit}</td>
-                      <td style="padding:5px 8px;font-size:11px;font-weight:700;text-align:center;color:${impColor}">${impLabel}</td>
+                      <td style="padding:5px 8px;font-size:10px;color:#555">
+                        <div style="font-weight:600">${hasBefore ? `${fv(fVal)} ${unit}` : '—'}</div>
+                        <div style="font-size:8px;color:#aaa;margin-top:1px">${firstDate || '—'}</div>
+                      </td>
+                      <td style="padding:5px 8px;font-size:10px;color:#0a1628">
+                        <div style="font-weight:700">${hasAfter ? `${fv(lVal)} ${unit}` : '—'}</div>
+                        <div style="font-size:8px;color:#aaa;margin-top:1px">${lastDate || '—'}</div>
+                      </td>
+                      <td style="padding:5px 8px;font-size:10px;font-weight:700;text-align:center">${changeHtml}</td>
                     </tr>`
                   }
 
@@ -761,35 +753,23 @@ ${indReportRef.current.innerHTML}
                               <tr style={{ background:'#f0f4f8' }}>
                                 <th style={{ padding:'5px 8px', textAlign:'right', fontSize:9, color:'#888' }}>الجزء</th>
                                 <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#0a1628' }}>كتلة هزيلة</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>المدى</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>الحالة</th>
                                 <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#d4af37' }}>دهون</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>المدى</th>
-                                <th style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>الحالة</th>
                               </tr>
                             </thead>
                             <tbody>
                               {[
-                                { name:'ذراع يسرى', lv:latest.left_arm_lean_kg,  lmn:latest.left_arm_lean_min,  lmx:latest.left_arm_lean_max,  fv_:latest.left_arm_fat_kg,  fmn:latest.left_arm_fat_min,  fmx:latest.left_arm_fat_max  },
-                                { name:'ذراع يمنى', lv:latest.right_arm_lean_kg, lmn:latest.right_arm_lean_min, lmx:latest.right_arm_lean_max, fv_:latest.right_arm_fat_kg, fmn:latest.right_arm_fat_min, fmx:latest.right_arm_fat_max },
-                                { name:'الجذع',     lv:latest.trunk_lean_kg,     lmn:latest.trunk_lean_min,     lmx:latest.trunk_lean_max,     fv_:latest.trunk_fat_kg,     fmn:latest.trunk_fat_min,     fmx:latest.trunk_fat_max     },
-                                { name:'ساق يسرى',  lv:latest.left_leg_lean_kg,  lmn:latest.left_leg_lean_min,  lmx:latest.left_leg_lean_max,  fv_:latest.left_leg_fat_kg,  fmn:latest.left_leg_fat_min,  fmx:latest.left_leg_fat_max  },
-                                { name:'ساق يمنى',  lv:latest.right_leg_lean_kg, lmn:latest.right_leg_lean_min, lmx:latest.right_leg_lean_max, fv_:latest.right_leg_fat_kg, fmn:latest.right_leg_fat_min, fmx:latest.right_leg_fat_max },
-                              ].map((seg, i) => {
-                                const lstS = st(seg.lv, seg.lmn, seg.lmx)
-                                const fstS = st(seg.fv_, seg.fmn, seg.fmx)
-                                return (
-                                  <tr key={seg.name} style={{ borderBottom:'1px solid #f0f0f0', background: i%2===0 ? '#fff':'#fafcff' }}>
-                                    <td style={{ padding:'5px 8px', fontWeight:600, color:'#333' }}>{seg.name}</td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#0a1628' }}>{fv(seg.lv)}</td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>{seg.lmn && seg.lmx ? `${seg.lmn}–${seg.lmx}` : '—'}</td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center' }}><span style={{ fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:5, color:lstS.color, background:lstS.color+'18' }}>{lstS.label||'—'}</span></td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#c09020' }}>{fv(seg.fv_)}</td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center', fontSize:9, color:'#aaa' }}>{seg.fmn && seg.fmx ? `${seg.fmn}–${seg.fmx}` : '—'}</td>
-                                    <td style={{ padding:'5px 8px', textAlign:'center' }}><span style={{ fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:5, color:fstS.color, background:fstS.color+'18' }}>{fstS.label||'—'}</span></td>
-                                  </tr>
-                                )
-                              })}
+                                { name:'ذراع يسرى', lv:latest.left_arm_lean_kg, fv_:latest.left_arm_fat_kg },
+                                { name:'ذراع يمنى', lv:latest.right_arm_lean_kg, fv_:latest.right_arm_fat_kg },
+                                { name:'الجذع', lv:latest.trunk_lean_kg, fv_:latest.trunk_fat_kg },
+                                { name:'ساق يسرى', lv:latest.left_leg_lean_kg, fv_:latest.left_leg_fat_kg },
+                                { name:'ساق يمنى', lv:latest.right_leg_lean_kg, fv_:latest.right_leg_fat_kg },
+                              ].map((seg, i) => (
+                                <tr key={seg.name} style={{ borderBottom:'1px solid #f0f0f0', background: i%2===0 ? '#fff':'#fafcff' }}>
+                                  <td style={{ padding:'5px 8px', fontWeight:600, color:'#333' }}>{seg.name}</td>
+                                  <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#0a1628' }}>{fv(seg.lv)}</td>
+                                  <td style={{ padding:'5px 8px', textAlign:'center', fontWeight:700, color:'#c09020' }}>{fv(seg.fv_)}</td>
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -817,26 +797,26 @@ ${indReportRef.current.innerHTML}
                           </div>
                         )}
 
-                        {/* First vs Last comparison */}
-                        {data.bodyRecs.length >= 2 && (
+                        {/* Before vs After comparison */}
+                        {data.bodyRecs.length > 0 && (
                           <div>
-                            <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>مقارنة أول قياس ← آخر قياس</p>
+                            <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>مقارنة قبل ← بعد</p>
                             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
                               <thead>
                                 <tr style={{ background:'#f0f4f8' }}>
                                   <th style={{ padding:'4px 6px', textAlign:'right', fontSize:9, color:'#888' }}>المؤشر</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>أول</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>آخر</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>تغير</th>
+                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>قبل</th>
+                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>بعد</th>
+                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>التغيير</th>
                                 </tr>
                               </thead>
                               <tbody dangerouslySetInnerHTML={{ __html: [
-                                improvRow('الوزن', first.weight_kg, latest.weight_kg, 'كجم', 'neutral'),
-                                improvRow('الدهون %', first.body_fat_percentage, latest.body_fat_percentage, '%', 'lower_better'),
-                                improvRow('العضلات', first.muscle_mass_kg, latest.muscle_mass_kg, 'كجم', 'higher_better'),
-                                improvRow('الكتلة الخالية', first.fat_free_mass_kg, latest.fat_free_mass_kg, 'كجم', 'higher_better'),
-                                improvRow('الدهون الحشوية', first.visceral_fat_index, latest.visceral_fat_index, '', 'lower_better'),
-                                improvRow('محيط الخصر', first.waist_cm, latest.waist_cm, 'سم', 'lower_better'),
+                                compareRow('الوزن', first.weight_kg, latest.weight_kg, 'كجم', first.measurement_date, latest.measurement_date),
+                                compareRow('الدهون %', first.body_fat_percentage, latest.body_fat_percentage, '%', first.measurement_date, latest.measurement_date),
+                                compareRow('العضلات', first.muscle_mass_kg, latest.muscle_mass_kg, 'كجم', first.measurement_date, latest.measurement_date),
+                                compareRow('الكتلة الخالية', first.fat_free_mass_kg, latest.fat_free_mass_kg, 'كجم', first.measurement_date, latest.measurement_date),
+                                compareRow('الدهون الحشوية', first.visceral_fat_index, latest.visceral_fat_index, '', first.measurement_date, latest.measurement_date),
+                                compareRow('محيط الخصر', first.waist_cm, latest.waist_cm, 'سم', first.measurement_date, latest.measurement_date),
                               ].join('') }} />
                             </table>
                           </div>
