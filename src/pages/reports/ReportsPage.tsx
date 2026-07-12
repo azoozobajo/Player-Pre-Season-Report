@@ -668,19 +668,46 @@ ${indReportRef.current.innerHTML}
                       </div>`
                   }
 
+                  const getMetricValue = (record: BodyCompositionRecord | undefined, key: string) => {
+                    if (!record) return undefined
+                    return (record as unknown as Record<string, number | undefined>)[key]
+                  }
+
+                  const compareMetrics = [
+                    { key: 'weight_kg', label: 'الوزن', unit: 'كجم' },
+                    { key: 'body_fat_percentage', label: 'نسبة الدهون', unit: '%' },
+                    { key: 'muscle_mass_kg', label: 'الكتلة العضلية', unit: 'كجم' },
+                    { key: 'fat_free_mass_kg', label: 'الكتلة الخالية', unit: 'كجم' },
+                    { key: 'body_fat_mass_kg', label: 'كتلة الدهون', unit: 'كجم' },
+                    { key: 'soft_lean_mass_kg', label: 'الكتلة الهزيلة', unit: 'كجم' },
+                    { key: 'total_body_water_kg', label: 'الماء الكلي', unit: 'كجم' },
+                    { key: 'protein_kg', label: 'البروتين', unit: 'كجم' },
+                    { key: 'mineral_kg', label: 'المعادن', unit: 'كجم' },
+                    { key: 'visceral_fat_index', label: 'الدهون الحشوية', unit: '' },
+                    { key: 'waist_cm', label: 'محيط الخصر', unit: 'سم' },
+                    { key: 'chest_cm', label: 'محيط الصدر', unit: 'سم' },
+                    { key: 'hip_cm', label: 'محيط الورك', unit: 'سم' },
+                    { key: 'left_upper_arm_cm', label: 'عضد يسرى', unit: 'سم' },
+                    { key: 'right_upper_arm_cm', label: 'عضد يمنى', unit: 'سم' },
+                  ]
+
+                  const singleMeasurement = data.bodyRecs.length <= 1 || first.id === latest.id
+
                   const compareRow = (label: string, fVal?: number, lVal?: number, unit = '', firstDate?: string, lastDate?: string) => {
                     if (fVal === undefined && lVal === undefined) return ''
                     const hasBefore = fVal !== undefined && fVal !== null
                     const hasAfter = lVal !== undefined && lVal !== null
+
                     let changeHtml = '<span style="font-size:9px;color:#888">—</span>'
-                    if (hasBefore && hasAfter) {
+                    if (!singleMeasurement && hasBefore && hasAfter) {
                       const diff = (lVal as number) - (fVal as number)
-                      if (diff > 0) changeHtml = '<span style="font-size:10px;font-weight:700;color:#00a86b">▲ زيادة</span>'
-                      else if (diff < 0) changeHtml = '<span style="font-size:10px;font-weight:700;color:#e74c3c">▼ نقصان</span>'
-                      else changeHtml = '<span style="font-size:9px;color:#888">بدون تغيير</span>'
-                    } else if (hasBefore || hasAfter) {
-                      changeHtml = '<span style="font-size:9px;color:#888">اختبار واحد</span>'
+                      if (diff > 0) changeHtml = `<span style="font-size:10px;font-weight:700;color:#00a86b">▲ زيادة ${Math.abs(diff).toFixed(diff % 1 === 0 ? 0 : 1)}${unit}</span>`
+                      else if (diff < 0) changeHtml = `<span style="font-size:10px;font-weight:700;color:#e74c3c">▼ نقصان ${Math.abs(diff).toFixed(diff % 1 === 0 ? 0 : 1)}${unit}</span>`
+                      else changeHtml = '<span style="font-size:9px;color:#888">ثبات</span>'
+                    } else if (singleMeasurement) {
+                      changeHtml = '<span style="font-size:9px;color:#888">—</span>'
                     }
+
                     return `<tr style="border-bottom:1px solid #f0f0f0">
                       <td style="padding:5px 8px;font-size:10px;color:#333">${label}</td>
                       <td style="padding:5px 8px;font-size:10px;color:#555">
@@ -688,8 +715,8 @@ ${indReportRef.current.innerHTML}
                         <div style="font-size:8px;color:#aaa;margin-top:1px">${firstDate || '—'}</div>
                       </td>
                       <td style="padding:5px 8px;font-size:10px;color:#0a1628">
-                        <div style="font-weight:700">${hasAfter ? `${fv(lVal)} ${unit}` : '—'}</div>
-                        <div style="font-size:8px;color:#aaa;margin-top:1px">${lastDate || '—'}</div>
+                        <div style="font-weight:700">${singleMeasurement ? '—' : hasAfter ? `${fv(lVal)} ${unit}` : '—'}</div>
+                        <div style="font-size:8px;color:#aaa;margin-top:1px">${singleMeasurement ? '—' : lastDate || '—'}</div>
                       </td>
                       <td style="padding:5px 8px;font-size:10px;font-weight:700;text-align:center">${changeHtml}</td>
                     </tr>`
@@ -800,25 +827,25 @@ ${indReportRef.current.innerHTML}
                         {/* Before vs After comparison */}
                         {data.bodyRecs.length > 0 && (
                           <div>
-                            <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:'0 0 6px', letterSpacing:1 }}>مقارنة قبل ← بعد</p>
-                            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
-                              <thead>
-                                <tr style={{ background:'#f0f4f8' }}>
-                                  <th style={{ padding:'4px 6px', textAlign:'right', fontSize:9, color:'#888' }}>المؤشر</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>قبل</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>بعد</th>
-                                  <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>التغيير</th>
-                                </tr>
-                              </thead>
-                              <tbody dangerouslySetInnerHTML={{ __html: [
-                                compareRow('الوزن', first.weight_kg, latest.weight_kg, 'كجم', first.measurement_date, latest.measurement_date),
-                                compareRow('الدهون %', first.body_fat_percentage, latest.body_fat_percentage, '%', first.measurement_date, latest.measurement_date),
-                                compareRow('العضلات', first.muscle_mass_kg, latest.muscle_mass_kg, 'كجم', first.measurement_date, latest.measurement_date),
-                                compareRow('الكتلة الخالية', first.fat_free_mass_kg, latest.fat_free_mass_kg, 'كجم', first.measurement_date, latest.measurement_date),
-                                compareRow('الدهون الحشوية', first.visceral_fat_index, latest.visceral_fat_index, '', first.measurement_date, latest.measurement_date),
-                                compareRow('محيط الخصر', first.waist_cm, latest.waist_cm, 'سم', first.measurement_date, latest.measurement_date),
-                              ].join('') }} />
-                            </table>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                              <p style={{ fontSize:9, color:'#aaa', fontWeight:700, margin:0, letterSpacing:1 }}>مقارنة قبل ← بعد</p>
+                              <span style={{ fontSize:8, color:'#888', background:'#f5f7fb', borderRadius:999, padding:'2px 6px' }}>
+                                {singleMeasurement ? 'قياس واحد' : 'مقارنة أول وآخر قياس'}
+                              </span>
+                            </div>
+                            <div style={{ background:'#f8fbff', border:'1px solid #e8eef7', borderRadius:10, padding:8 }}>
+                              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:10 }}>
+                                <thead>
+                                  <tr style={{ background:'#eef4fb' }}>
+                                    <th style={{ padding:'4px 6px', textAlign:'right', fontSize:9, color:'#888' }}>المؤشر</th>
+                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>قبل</th>
+                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>بعد</th>
+                                    <th style={{ padding:'4px 6px', textAlign:'center', fontSize:9, color:'#888' }}>التغيير</th>
+                                  </tr>
+                                </thead>
+                                <tbody dangerouslySetInnerHTML={{ __html: compareMetrics.map(metric => compareRow(metric.label, getMetricValue(first, metric.key), getMetricValue(latest, metric.key), metric.unit, first.measurement_date, latest.measurement_date)).join('') }} />
+                              </table>
+                            </div>
                           </div>
                         )}
                       </div>
