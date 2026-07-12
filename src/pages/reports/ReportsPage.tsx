@@ -19,7 +19,7 @@ import {
   type BodyCompositionRecord,
 } from '../../types'
 import { getIndicatorValue } from '../../utils/progress'
-import { FileText, Printer, BarChart3, ChevronUp, ChevronDown, Scale } from 'lucide-react'
+import { FileText, Printer, BarChart3, ChevronUp, ChevronDown, Scale, Users } from 'lucide-react'
 
 // ── special note categories ───────────────────────────────────────────────────
 const CAT_TARGETS   = '__targets__'
@@ -168,11 +168,39 @@ interface MultiIndReport {
   matrix:     Record<string, Record<string, CellValue>>
 }
 
+interface PlayerComparisonReport {
+  indicators: Indicator[]
+  players: Player[]
+  matrix: Record<string, Record<string, {
+    first: CellValue | null
+    last: CellValue | null
+    firstDate: string | null
+    lastDate: string | null
+  }>>
+}
+
+function formatCellValue(value: CellValue | null, indicator: Indicator): string {
+  if (!value) return '—'
+  if (value.numeric !== null) {
+    if (indicator.type === 'rating') return `${value.numeric}/10`
+    const unit = indicator.unit ? ` ${indicator.unit}` : ''
+    return `${value.numeric}${unit}`
+  }
+  return value.text || '—'
+}
+
+function formatShortDate(value?: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('ar-SA')
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 export function ReportsPage() {
   const [programs, setPrograms]         = useState<Program[]>([])
   const [loading, setLoading]           = useState(true)
-  const [activeTab, setActiveTab]       = useState<'player' | 'indicator' | 'bodycomp'>('player')
+  const [activeTab, setActiveTab]       = useState<'player' | 'indicator' | 'bodycomp' | 'players'>('player')
 
   // ── Player report tab ─────────────────────────────────────────────────────
   const [players,  setPlayers]          = useState<Player[]>([])
@@ -194,6 +222,14 @@ export function ReportsPage() {
   const [printingInd, setPrintingInd]               = useState(false)
   const [indSortCol, setIndSortCol]                 = useState<string | null>(null)
   const [indSortDir, setIndSortDir]                 = useState<'asc' | 'desc'>('desc')
+
+  // ── Team comparison tab ───────────────────────────────────────────────────
+  const [teamReportProgramId, setTeamReportProgramId] = useState('')
+  const [teamReportIndicators, setTeamReportIndicators] = useState<Indicator[]>([])
+  const [teamReportSelIndicatorIds, setTeamReportSelIndicatorIds] = useState<Set<string>>(new Set())
+  const [teamReport, setTeamReport] = useState<PlayerComparisonReport | null>(null)
+  const [loadingTeamProg, setLoadingTeamProg] = useState(false)
+  const [loadingTeamReport, setLoadingTeamReport] = useState(false)
 
   // ── Body comp sheet tab ───────────────────────────────────────────────────
   const [bcRepProgramId, setBcRepProgramId] = useState('')
@@ -350,6 +386,62 @@ export function ReportsPage() {
     setLoadingMultiInd(false)
   }
 
+  const onTeamReportProgramChange = async (pid: string) => {
+    setTeamReportProgramId(pid)
+    setTeamReportSelIndicatorIds(new Set())
+    setTeamReport(null)
+    setTeamReportIndicators([])
+    if (!pid) return
+    setLoadingTeamProg(true)
+    try {
+      const inds = await indicatorsService.getIndicators(pid).catch(() => [])
+      setTeamReportIndicators(inds)
+    } catch (e) { console.error(e) }
+    setLoadingTeamProg(false)
+  }
+
+  const generateTeamReport = async () => {
+    if (teamReportSelIndicatorIds.size === 0 || !teamReportProgramId) return
+    setLoadingTeamReport(true)
+    try {
+      const [sessions, programPlayers] = await Promise.all([
+        assessmentsService.getSessions(teamReportProgramId).catch(() => []),
+        playersService.getProgramPlayers(teamReportProgramId).catch(() => []),
+      ])
+      const sortedSessions = [...sessions].sort((a, b) => a.session_date.localeCompare(b.session_date))
+      const allPlayers = programPlayers.map(pp => pp.player).filter(Boolean) as Player[]
+      const allSessionResults = await Promise.all(
+        sortedSessions.map(s => assessmentsService.getResults(s.id).catch(() => []))
+      )
+
+      const matrix: PlayerComparisonReport['matrix'] = {}
+      for (const [index, session] of sortedSessions.entries()) {
+        const sessionResults = allSessionResults[index] || []
+        for (const r of sessionResults) {
+          if (!teamReportSelIndicatorIds.has(r.indicator_id)) continue
+          if (!matrix[r.player_id]) matrix[r.player_id] = {}
+          const existing = matrix[r.player_id][r.indicator_id] || { first: null, last: null, firstDate: null, lastDate: null }
+          const value: CellValue = {
+            numeric: r.value_numeric ?? r.value_rating ?? null,
+            text: r.value_text ?? (r as { value_choice?: string }).value_choice ?? null,
+          }
+          if (existing.first === null) {
+            existing.first = value
+            existing.firstDate = session.session_date
+          }
+          existing.last = value
+          existing.lastDate = session.session_date
+          matrix[r.player_id][r.indicator_id] = existing
+        }
+      }
+
+      const selectedIndicators = teamReportIndicators.filter(i => teamReportSelIndicatorIds.has(i.id))
+      const activePlayers = allPlayers.filter(p => matrix[p.id] && Object.keys(matrix[p.id]).length > 0)
+      setTeamReport({ indicators: selectedIndicators, players: activePlayers, matrix })
+    } catch (e) { console.error(e) }
+    setLoadingTeamReport(false)
+  }
+
   const onBcRepProgramChange = async (pid: string) => {
     setBcRepProgramId(pid); setBcRepPlayers([]); setBcRepRecords({}); setBcRepSortCol(null)
     if (!pid) return
@@ -492,6 +584,12 @@ ${indReportRef.current.innerHTML}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === 'indicator' ? 'bg-[#0f2040] text-white font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
           >
             <BarChart3 className="w-4 h-4" /> كشف نتائج المؤشر
+          </button>
+          <button
+            onClick={() => setActiveTab('players')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${activeTab === 'players' ? 'bg-[#0f2040] text-white font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+          >
+            <Users className="w-4 h-4" /> كشف اللاعبين
           </button>
           <button
             onClick={() => setActiveTab('bodycomp')}
@@ -1212,6 +1310,193 @@ ${indReportRef.current.innerHTML}
                                       <span className={`text-sm font-medium ${display === '—' ? 'text-gray-300' : isSorted ? 'text-[#0f2040] font-bold' : 'text-gray-800'}`}>
                                         {display}
                                       </span>
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Team Players Comparison Tab ─────────────────────────────────── */}
+        {activeTab === 'players' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <h2 className="text-lg font-semibold text-gray-800">كشف اللاعبين قبل/بعد</h2>
+            </div>
+
+            <Select label="البرنامج" value={teamReportProgramId} onChange={e => onTeamReportProgramChange(e.target.value)}>
+              <option value="">اختر البرنامج...</option>
+              {programs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+
+            {!teamReportProgramId && !loadingTeamProg && (
+              <EmptyState
+                title="اختر برنامجاً"
+                description="لرؤية مقارنة قبل/بعد جميع اللاعبين حسب المؤشرات المختارة"
+                icon={<Users className="w-10 h-10" />}
+              />
+            )}
+
+            {loadingTeamProg && <LoadingSpinner message="جار تحميل المؤشرات..." />}
+
+            {!loadingTeamProg && teamReportProgramId && teamReportIndicators.length === 0 && (
+              <EmptyState
+                title="لا توجد مؤشرات"
+                description="لم يتم إضافة أي مؤشرات لهذا البرنامج بعد"
+                icon={<Users className="w-10 h-10" />}
+              />
+            )}
+
+            {!loadingTeamProg && teamReportProgramId && teamReportIndicators.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                <p className="text-sm font-semibold text-gray-700 mb-3">اختر المؤشرات التي تريد مقارنتها بين أول وآخر جلسة</p>
+                <div className="space-y-3">
+                  {(() => {
+                    const uncategorized = teamReportIndicators.filter(i => !i.category_id)
+                    const categories = teamReportIndicators
+                      .filter(i => i.category_id)
+                      .reduce<Record<string, { label: string; inds: typeof teamReportIndicators }>>((acc, ind) => {
+                        const catId = ind.category_id!
+                        if (!acc[catId]) acc[catId] = { label: ind.category?.name_ar || ind.category?.name || 'أخرى', inds: [] }
+                        acc[catId].inds.push(ind)
+                        return acc
+                      }, {})
+                    const groups = [
+                      ...Object.values(categories),
+                      ...(uncategorized.length > 0 ? [{ label: 'بدون تصنيف', inds: uncategorized }] : []),
+                    ]
+                    return groups.map(group => (
+                      <div key={group.label}>
+                        <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wide">{group.label}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.inds.map(ind => {
+                            const checked = teamReportSelIndicatorIds.has(ind.id)
+                            return (
+                              <label
+                                key={ind.id}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none ${checked ? 'bg-[#0f2040] border-[#0f2040] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-[#0f2040] hover:text-[#0f2040]'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="hidden"
+                                  checked={checked}
+                                  onChange={e => {
+                                    const next = new Set(teamReportSelIndicatorIds)
+                                    if (e.target.checked) next.add(ind.id)
+                                    else next.delete(ind.id)
+                                    setTeamReportSelIndicatorIds(next)
+                                  }}
+                                />
+                                <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-white border-white' : 'border-gray-300'}`}>
+                                  {checked && <span className="block w-1.5 h-1.5 rounded-sm bg-[#0f2040]" />}
+                                </span>
+                                {ind.name_ar || ind.name}
+                                {ind.unit && <span className={`text-[10px] ${checked ? 'opacity-70' : 'text-gray-400'}`}>({ind.unit})</span>}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex gap-2">
+                    <button onClick={() => setTeamReportSelIndicatorIds(new Set(teamReportIndicators.map(i => i.id)))} className="text-xs text-[#0f2040] hover:underline">تحديد الكل</button>
+                    <span className="text-gray-300">|</span>
+                    <button onClick={() => setTeamReportSelIndicatorIds(new Set())} className="text-xs text-gray-400 hover:underline">إلغاء الكل</button>
+                  </div>
+                  <Button
+                    onClick={generateTeamReport}
+                    loading={loadingTeamReport}
+                    disabled={teamReportSelIndicatorIds.size === 0}
+                  >
+                    <Users className="w-4 h-4" />
+                    عرض الكشف{teamReportSelIndicatorIds.size > 0 ? ` (${teamReportSelIndicatorIds.size})` : ''}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {loadingTeamReport && <LoadingSpinner message="جار تجهيز الكشف..." />}
+
+            {teamReport && !loadingTeamReport && (
+              <>
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-6 flex-wrap">
+                  <div>
+                    <p className="text-xs text-gray-400">المؤشرات المختارة</p>
+                    <p className="text-sm font-semibold text-gray-900">{teamReport.indicators.length} مؤشر</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400">عدد اللاعبين</p>
+                    <p className="text-sm font-semibold text-gray-900">{teamReport.players.length} لاعب</p>
+                  </div>
+                </div>
+
+                {teamReport.players.length === 0 ? (
+                  <EmptyState
+                    title="لا توجد نتائج"
+                    description="لم يتم تسجيل أي نتائج للمؤشرات المختارة حتى الآن"
+                    icon={<Users className="w-10 h-10" />}
+                  />
+                ) : (
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-[#0f2040] text-white">
+                            <th className="px-3 py-3 text-center font-semibold text-xs whitespace-nowrap w-10">#</th>
+                            <th className="px-4 py-3 text-right font-semibold text-xs whitespace-nowrap min-w-[140px]">اسم اللاعب</th>
+                            {teamReport.indicators.map(ind => (
+                              <th key={ind.id} className="px-3 py-3 text-center font-semibold text-xs whitespace-nowrap min-w-[190px]">
+                                {ind.name_ar || ind.name}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {teamReport.players.map((player, idx) => {
+                            const playerCells = teamReport.matrix[player.id] || {}
+                            return (
+                              <tr key={player.id} className={idx % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50/50 hover:bg-gray-100/50'}>
+                                <td className={`px-3 py-3 text-center text-xs font-bold text-gray-400 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>{idx + 1}</td>
+                                <td className={`px-4 py-3 font-semibold text-gray-800 whitespace-nowrap ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-[#0f2040] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                      {player.full_name.charAt(0)}
+                                    </div>
+                                    {player.full_name}
+                                  </div>
+                                </td>
+                                {teamReport.indicators.map(ind => {
+                                  const cell = playerCells[ind.id]
+                                  const before = formatCellValue(cell?.first ?? null, ind)
+                                  const after = formatCellValue(cell?.last ?? null, ind)
+                                  const beforeDate = formatShortDate(cell?.firstDate)
+                                  const afterDate = formatShortDate(cell?.lastDate)
+                                  return (
+                                    <td key={ind.id} className="px-3 py-3 align-top">
+                                      <div className="space-y-2 min-w-[170px]">
+                                        <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-2">
+                                          <div className="text-[10px] text-gray-400">قبل</div>
+                                          <div className="font-semibold text-gray-800">{before}</div>
+                                          <div className="text-[10px] text-gray-400">{beforeDate}</div>
+                                        </div>
+                                        <div className="rounded-lg border border-gray-200 bg-white p-2">
+                                          <div className="text-[10px] text-gray-400">بعد</div>
+                                          <div className="font-semibold text-[#0f2040]">{after}</div>
+                                          <div className="text-[10px] text-gray-400">{afterDate}</div>
+                                        </div>
+                                      </div>
                                     </td>
                                   )
                                 })}
